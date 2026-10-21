@@ -1,0 +1,50 @@
+{
+  "protocolVersion": "1.0",
+  "actions": [
+    "ensure",
+    "find",
+    "refresh",
+    "open",
+    "consume-launch",
+    "status"
+  ],
+  "requestFields": [
+    "protocolVersion",
+    "requestId",
+    "action",
+    "payload"
+  ],
+  "responseFields": [
+    "success",
+    "requestId",
+    "result",
+    "reasonCode"
+  ],
+  "record": {
+    "site": [
+      "youtube",
+      "bilibili",
+      "baidupan"
+    ],
+    "mode": [
+      "normal_video",
+      "playlist_video",
+      "pan_video"
+    ],
+    "record": [
+      "dedupeKey",
+      "fields"
+    ],
+    "parent": [
+      "dedupeKey",
+      "fields"
+    ]
+  },
+  "limits": {
+    "maxRequestBytes": 1048576,
+    "launchTtlMs": 30000,
+    "heartbeatMs": 20000,
+    "maxPeers": 8
+  },
+  "ownership": "Metadata only. No body-write, arbitrary path, eval or delete operations."
+}
