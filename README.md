@@ -1,6 +1,6 @@
 # TSNotes × Obsidian
 
-版本：浏览器扩展 0.8.7 / TSNotes Bridge Peng 0.1.5 / 协议 1.0。桌面 macOS；首轮验收环境 ego lite。
+版本：浏览器扩展 0.8.9 / TSNotes Bridge Peng 0.1.6 / 协议 1.0。桌面 macOS；首轮验收环境 ego lite。
 
 ## 安装和配对
 
@@ -61,4 +61,4 @@ Properties、阅读视图、实时预览与弹出窗口中的 TSNotes 链接由�
 
 保留关系 JSON、笔记 YAML 和两端配对设置。重复 UUID 或 YAML 错误先修复来源文件，不通过重建笔记绕过。创建成功但打开失败可直接再次定位，不需要重建。
 
-开发在两端 `codex/obsidian-integration` 分支，main 保留基线。只在完整验收后合并。部署脚本备份原运行产物并保留 data.json；回滚恢复明确版本的构建产物，再原生 Reload 扩展、定向 Reload Obsidian 插件。不删除笔记、关系数据或用户设置。不包含 push、Release、BRAT 或商店发布。
+两端保留 `main` 与 `codex/obsidian-integration`，原基线可从 Git 历史恢复。用户已要求缩减长时间和极端测试，交付以源码检查和核心真实链路验收为准；未覆盖项目见验收记录。部署脚本备份原运行产物并保留 data.json；回滚恢复明确版本的构建产物，再原生 Reload 扩展、定向 Reload Obsidian 插件。不删除笔记、关系数据或用户设置。不包含 push、Release、BRAT 或商店发布。

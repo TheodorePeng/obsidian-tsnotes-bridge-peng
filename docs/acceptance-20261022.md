@@ -1,13 +1,13 @@
-# TSNotes × Obsidian 验收记录（进行中）
+# TSNotes × Obsidian 交付验收记录
 
-当前源码：TSNotes 0.8.7 / TSNotes Bridge Peng 0.1.5；协议 1.0。
+当前源码：TSNotes 0.8.9 / TSNotes Bridge Peng 0.1.6；协议 1.0。
 
-两仓库开发分支均为 `codex/obsidian-integration`。main 尚未合并，没有 push、发布或修改 NotionImporter。配置凭据不进入本记录。
+两仓库使用 `codex/obsidian-integration`，已将通过核心验收的实现合并至 main，并保留开发分支。没有 push、发布或修改 NotionImporter。配置凭据不进入本记录。
 
 ## 已完成的源码验证
 
-- Node 24.22.0：TSNotes `npm run check:local` 全链通过，包含新加入的启动 URL、Obsidian 集成和冷唤醒检查。
-- 插件 `npm run typecheck`、`npm test`、`npm run build`、`git diff --check` 通过；13 个行为用例。
+- Node 24.22.0：0.8.8 的 `npm run check:local` 全链通过。0.8.9 的启动时机修复通过 typecheck、正式 check:obsidian、build、release-readiness、final-readiness 与最终真实烟测；按用户要求未再次重复全部旧链。
+- 插件 `npm run typecheck`、`npm test`、`npm run build`、`git diff --check` 通过；14 个行为用例。
 - 1,000 条合成索引记录、500 项列表、最多 3 个并发、200 次连接开闭、取消、绑定原 Vault 重试、重复 UUID、Bilibili 分 P、身份冲突、预览变更和关系文件丢失均有自动化覆盖。
 - 新增协议没有正文写入、任意文件操作、eval 或删除接口。
 - 原 Notion 正式检查链保持通过；外部 save-to-notion 显式保留 Notion 目标。未对真实 Notion 页面执行写入测试。
@@ -34,6 +34,15 @@
 | YouTube 实际 Playlist 批量 | MIT 课程 35 项完成，0 失败 | 真实网页按钮 |
 | 批量后 Vault | 98 篇记录、98 个不同 UUID；除人工 QA 内容外正文均为空 | 实际 Vault 元数据及文件 |
 | 跨站热切换（0.8.4/0.8.5） | 发现导航后角色标记失效与旧媒体提前响应；另观察到 Bilibili 网络异常和本地网络权限提示 | 已修复源码，0.8.7 真实回归待完成 |
+| 最新协议冷启动回执（0.8.7/0.1.5） | tab 1667287805 从创建窗口移动到 VideoPlay 1667287806；同 tab ID；28 秒定位回执成功 | 真实应用链路 |
+| 最新热切换（0.8.7） | YouTube → Bilibili → 百度网盘 → YouTube，始终 tab 1667287805 / window 1667287806，无额外播放页 | 真实站点 + 媒体时间核对 |
+| 阅读视图、实时预览 | 渲染链接 click、CodeMirror Cmd+mousedown 均被接管并等待定位回执成功 | 实际渲染 DOM 事件 |
+| 独立窗口（0.1.6） | 修复跨 realm 的 instanceof 漏接；在真实 popout 的 Properties 点击成功 | 实际独立窗口 DOM 事件 |
+| 显式刷新 | 可见预览确认后更新允许属性；UUID、用户 Status 保留，正文 SHA-256 完全相同 | 实际 popup UI + 真实 Vault；测试将 popup 的来源查询绑定到已知 VideoPlay tab |
+| 复制时间戳 | 系统剪贴板包含 TSNotes Markdown 链接；pasteAttempted=false、notionWriteAttempted=false；正文哈希不变 | 真实复制命令与系统剪贴板 |
+| 200 次连续播放定位 | 200 成功、0 失败，pending=0，无额外播放标签；Obsidian 强制 GC 后 usedSize 从 416736468 到 416755920 字节，增量 19452 字节（约 19 KiB） | 真实 WebSocket 工作量；堆数据仅代表 Obsidian 渲染进程 |
+| 隐藏确认按钮（0.8.8） | 修复 button 样式覆盖 hidden 的问题；确认按钮 hidden=true 且 computed display=none | 最新构建实际 popup |
+| 最终冷启动（0.8.9 / 0.1.6） | 提前至 document_start 捕获启动参数；对网站清理 URL 的情况核对 Chrome documentId 与原导航 URL；Properties 点击创建 tab 1667287820 并直接移至 VideoPlay 1667287821，35 秒定位成功 | 最终真实烟测 |
 | 最新源码播放保护 | 冷/热播放共用队列，定位前后复核目标身份，恢复页面角色，排队过期不导航，关闭/禁用取消重试；冷启动反馈定位回执 | 正式自动化通过 |
 
 测试为验证保留正文，在 YouTube 测试笔记中手动加入了一段 QA 正文与时间戳链接。该内容来自测试动作，新增 Obsidian 保存流程没有生成或改写正文。
@@ -42,16 +51,18 @@
 
 ## 浏览器控制记录
 
-Task Space：1，名称 TSNotes Obsidian integration。曾两次收到 Ego 的用户控制硬停止错误，均停止浏览器操作；用户分别明确授权恢复后才重新取得同一 Space。没有主动 handOff 或 finish。随后 Ego 返回 Space 1 不存在且列表为空；收到用户恢复授权后重新检查仍为空，已停止浏览器操作并请求是否允许唯一替代 Space。
+Task Space：1，名称 TSNotes Obsidian integration。曾两次收到 Ego 的用户控制硬停止错误，均停止浏览器操作；用户分别明确授权恢复后才重新取得同一 Space。没有主动 handOff 或 finish。随后 Ego 返回 Space 1 不存在且列表为空；收到用户恢复授权后重新检查仍为空，已停止浏览器操作并请求是否允许唯一替代 Space。用户明确授权后创建唯一替代 Space 11，名称 TSNotes Obsidian integration recovery；实际 ownership=agent。原 Space 1 未主动 handOff/finish。
 
-保留页面：扩展详情、Obsidian 配对、YouTube 示例、百度网盘列表/播放页、Bilibili 多 P 测试页。最终交付前必须重新记录页面标签和实时 ownership。
+原 Space 的三站页面已记录在历史结果。替代 Space 11 最终保留 p1 扩展详情、p6 配对；p2/p3/p4/p5 随原生 Reload 关闭。最后实时 ownership=agent。测试播放页已关闭，恢复默认保存目标 Notion；Math Peng 配对保留，Obsidian 联动启用。
 
-## 尚未完成的验收门禁
+## 最新验收范围与未覆盖项
 
-- 0.8.7 / 0.1.5 最终构建的冷启动回执、热切换与快速连续点击真实回归。
-- 三站批量保存已实测通过；部分失败/取消/仅重试及 YouTube 跨列表复用仍需最终真实回归（自动化已覆盖）。
-- 最终版本跨站热切换、Properties/阅读/实时预览/独立窗口与复制不写正文回归。
-- 多 Vault 的真实路由验证（自动化已覆盖）；关闭重开后定位。
-- 30 分钟静置、受控 A/B CPU 增量及固定工作量后保留 JS 堆增量。工程目标仍为单核 1 个百分点、10 MiB，没有因尚未测量而放宽。
+用户随后明确要求尽快收尾、停止长时间和极端测试，因此不再将原始完整压力测试矩阵作为合并前置条件。核心三站保存、实际 Playlist、身份复用、移动定位、播放、刷新和正文保护已验证；两端源码检查通过。
 
-上述门禁通过前保持开发分支，不合并 main。不能把构建通过、原生 Reload 或没有崩溃当作完整验收。
+仍未做完整真实场景覆盖：多个真实 Vault 同时路由、YouTube 同视频跨两个实际列表、批量部分失败/取消/仅重试（这些已有自动化覆盖）。没有完成 30 分钟受控闲置 A/B，也没有给出浏览器背景 JS 堆增量或整机不崩溃保证。CPU 单核 1 个百分点、JS 堆 10 MiB 的原工程目标没有被当作实测通过。
+
+资源采样已停止；测试时关闭的插件与浏览器联动均已恢复。未批量禁用其他插件，未删除测试笔记。长时间采样不再继续，也不再重复已通过的检查。真实浏览器/Vault操作不符合 external-code-worker-peng 的委托边界，未为重复验收调用外部 Worker。
+
+## 资源采样方法与边界
+
+使用 scripts/sample-obsidian-resources.py 每 15 秒读取 ps 与 macOS 内存压力，按 Ego / Obsidian 进程汇总 CPU 与 RSS；不发调试请求维持 MV3。关闭联动基线的前 120 秒作为操作后预热排除；2026-10-22T02:14:06.884Z 已确认 disabled=true、连接数=0。按用户新要求中止后续长时间采样；现有短时数据不用于证明完整 CPU 阈值。RSS 不等同于保留 JS 堆；当前 19 KiB 结论仅限 Obsidian 渲染进程，不冒充整个浏览器或系统。

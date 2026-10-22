@@ -1,5 +1,5 @@
 import { EditorView } from "@codemirror/view";
-import { linkAt } from "./link-target";
+import { linkAt, eventElement } from "./link-target";
 import { RecordService } from "./records";
 import { storageFor } from "./obsidian-storage";
 import { defaults, registry, safePath, type BridgeSettings } from "./model";
@@ -142,10 +142,7 @@ export default class TSNotesBridgePlugin extends Plugin {
     const bind = (doc: Document) => {
       if (documents.has(doc)) return;
       const listener = (event: MouseEvent) => {
-        const target =
-          event.target instanceof doc.defaultView!.Element
-            ? (event.target as Element)
-            : null;
+        const target = eventElement(event.target);
         const anchor = target?.closest("a[href],.external-link[data-href]");
         const href =
           anchor?.getAttribute("href") || anchor?.getAttribute("data-href");
