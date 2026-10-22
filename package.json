@@ -1,6 +1,6 @@
 {
   "name": "obsidian-tsnotes-bridge-peng",
-  "version": "0.1.0",
+  "version": "0.1.5",
   "private": true,
   "type": "module",
   "engines": {
@@ -16,6 +16,7 @@
     "ws": "^8.18.3"
   },
   "devDependencies": {
+    "@codemirror/view": "6.43.13",
     "@types/node": "^22.10.2",
     "@types/ws": "^8.18.1",
     "esbuild": "^0.25.0",

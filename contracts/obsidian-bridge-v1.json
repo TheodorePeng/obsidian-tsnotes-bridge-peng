@@ -6,6 +6,7 @@
     "refresh",
     "open",
     "consume-launch",
+    "launch-result",
     "status"
   ],
   "requestFields": [
