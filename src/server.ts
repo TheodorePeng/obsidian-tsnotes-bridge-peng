@@ -71,9 +71,9 @@ export class BridgeServer {
         ) as RequestEnvelope;
         if (
           !["1.0", "1.1", "1.2"].includes(r.protocolVersion) ||
-          !r.requestId ||
+          typeof r.requestId !== "string" || !r.requestId ||
           r.requestId.length > 120 ||
-          !r.payload ||
+          !r.payload || typeof r.payload !== "object" || Array.isArray(r.payload) ||
           ![
             "ensure",
             "find",
@@ -83,6 +83,8 @@ export class BridgeServer {
             "launch-result",
             "status",
             "report-playback",
+            "resource-query", "resource-begin", "resource-chunk", "resource-status",
+            "resource-preview", "resource-commit", "resource-cancel",
           ].includes(r.action)
         )
           throw Error("invalid_request");
@@ -151,7 +153,7 @@ export class BridgeServer {
   }
   private async execute(r: RequestEnvelope): Promise<unknown> {
     if (r.action === "status")
-      return { vaultId: this.local.vaultId, connected: this.connected, protocolVersion: "1.2" };
+      return { vaultId: this.local.vaultId, connected: this.connected, protocolVersion: "1.2", capabilities:["resource-import-v1"] };
     if(r.action==="report-playback")return this.playback.report(r.payload);
     if (r.action === "consume-launch") {
       const ticket = String(r.payload.ticket || ""),

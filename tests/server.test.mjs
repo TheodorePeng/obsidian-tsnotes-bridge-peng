@@ -90,6 +90,11 @@ test("loopback authentication, single-use tickets, idempotency and shutdown", as
       "request_id_conflict",
     );
     assert.equal((await send("delete")).reasonCode, "invalid_request");
+    assert.deepEqual((await send("status")).result.capabilities,["resource-import-v1"]);
+    for(const stage of ["query","begin","chunk","status","preview","commit","cancel"]){assert.equal((await send("resource-"+stage,{documentId:"test"})).success,true);}
+    assert.equal((await send("resource-query",{},undefined,false)).status,403);
+    assert.equal((await send("resource-delete")).reasonCode,"invalid_request");
+    assert.equal((await send("resource-query",[])).reasonCode,"invalid_request");
     assert.equal(bridge.diagnostics.heartbeats, 0);
   } finally {
     bridge.stop();

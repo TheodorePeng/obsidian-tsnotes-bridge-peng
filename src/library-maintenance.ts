@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import type { RecordService } from "./records";
 import { safePath, text, type BridgeSettings, type Fields } from "./model";
 import { libraryViews, type LibraryView } from "./library";
+import { legacyViewPath } from "./layout-migration";
 import { beginLibraryMigration, hash, migrationPreviewMarkdown, planLibraryMigration, rollbackLibraryMigration, runLibraryMigration, type MigrationIO, type MigrationJournal, type MigrationPlan, type MigrationSnapshot } from "./library-migration";
 
 export interface ViewChange extends LibraryView { beforeHash: string | null; changed: boolean; }
@@ -149,12 +150,14 @@ export class LibraryMaintenance {
     await this.records.maintain(() => rollbackLibraryMigration(journal, this.io(new Set(Object.keys(journal.expected)))));
   }
   async viewPreview(): Promise<ViewChange[]> {
+    this.assertEntryLayout();
     const changes: ViewChange[] = [];
     for (const view of libraryViews(this.settings())) { const before = await this.read(view.path); changes.push({ ...view, beforeHash: before === null ? null : hash(before), changed: before !== view.content }); }
     return changes;
   }
   async applyViews(changes: ViewChange[]): Promise<void> {
     await this.records.maintain(async () => {
+      this.assertEntryLayout();
       await this.assertNoDrafts(changes.map(c => c.path));
       const valid = libraryViews(this.settings());
       for (const change of changes) {
@@ -169,5 +172,8 @@ export class LibraryMaintenance {
         else await this.io().write(change.path, change.content, change.beforeHash);
       }
     });
+  }
+  private assertEntryLayout(): void {
+    for(const view of libraryViews(this.settings())){const old=legacyViewPath(view.path,this.settings());if(old&&this.app.vault.getAbstractFileByPath(old))throw Error("请先预览并迁移旧版库入口，再更新默认视图");}
   }
 }

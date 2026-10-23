@@ -1,6 +1,7 @@
 import { App, TFile, parseYaml, stringifyYaml } from "obsidian";
 import { safePath, type Fields, type BridgeSettings } from "./model";
 import { libraryGuide, libraryPaths, libraryViews } from "./library";
+import { legacyViewPath } from "./layout-migration";
 import type { RecordStorage, Relation } from "./records";
 export function storageFor(app: App, presentation: { open(file: TFile): Promise<void> }): RecordStorage {
   const directory = async (path: string) => {
@@ -93,6 +94,8 @@ async function createMissingViews(app: App, settings: BridgeSettings): Promise<v
   if (!app.vault.getAbstractFileByPath(paths.membersBase) && app.vault.getAbstractFileByPath(`${paths.root}/_data/views/Playlist Videos.base`))
     throw Error(`请先在 Obsidian 中将旧共享 Base 移动到 ${paths.membersBase}，以保留已有视图设置及引用。`);
   for (const view of [...libraryViews(settings), libraryGuide(settings)]) {
+    const legacy = legacyViewPath(view.path, settings);
+    if (!app.vault.getAbstractFileByPath(view.path) && legacy && app.vault.getAbstractFileByPath(legacy)) continue;
     const existing = app.vault.getAbstractFileByPath(view.path);
     if (existing) {
       if (!(existing instanceof TFile)) throw Error("library_view_path_conflict");

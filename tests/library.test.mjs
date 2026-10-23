@@ -74,14 +74,14 @@ test("missing view initialization is serialized and preserves customized Bases a
   const storage = await moduleAt("src/obsidian-storage.ts", { obsidian: { TFile: File } });
   await Promise.all([storage.ensureLibraryViews(app, settings), storage.ensureLibraryViews(app, settings)]);
   const bases = [...files.values()].filter(f => f instanceof File && f.path.endsWith(".base")); assert.equal(bases.length, 3);
-  const guide = files.get("TSNotes/Playlists/_records/README.md");
+  const guide = files.get("TSNotes/_data/README.md");
   assert(guide.content.includes("this")); assert(guide.content.includes("_data/playlists"));
   assert.equal((guide.content.match(/^```$/gm) || []).length, 6);
   guide.content += "\nPersonal instructions";
   bases[0].content = "user custom Base"; await storage.ensureLibraryViews(app, settings); assert.equal(bases[0].content, "user custom Base");
   assert(guide.content.endsWith("Personal instructions"));
   const customized = lib.libraryGuide({ ...settings, root: "Learning", videos: "Clips", playlists: "Courses" });
-  assert.equal(customized.path, "Learning/Courses/_records/README.md");
+  assert.equal(customized.path, "Learning/_data/README.md");
   assert(customized.content.includes("![[Learning/Courses/_records/Playlist Videos.base]]"));
   assert(!customized.content.includes("TSNotes/Playlists/"));
 });

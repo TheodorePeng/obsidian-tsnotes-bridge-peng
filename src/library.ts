@@ -1,17 +1,17 @@
 import { safePath, registry, type BridgeSettings } from "./model";
 import { libraryGuideContent } from "./library-guide";
 
-export const LIBRARY_VERSION = 2;
+export const LIBRARY_VERSION = 3;
 export function libraryPaths(settings: BridgeSettings) {
   const root = safePath(settings.root);
   return {
     root,
     videos: safePath(`${root}/${settings.videos}/_records`),
     playlists: safePath(`${root}/${settings.playlists}/_records`),
-    videoBase: safePath(`${root}/${settings.videos}/Videos.base`),
-    playlistBase: safePath(`${root}/${settings.playlists}/Playlists.base`),
+    videoBase: safePath(`${root}/Videos.base`),
+    playlistBase: safePath(`${root}/Playlists.base`),
     membersBase: safePath(`${root}/${settings.playlists}/_records/Playlist Videos.base`),
-    readme: safePath(`${root}/${settings.playlists}/_records/README.md`),
+    readme: safePath(`${root}/_data/README.md`),
   };
 }
 
@@ -56,7 +56,7 @@ export function libraryViews(settings: BridgeSettings): LibraryView[] {
     "note.Source Total Videos": { displayName: "Source videos" },
   };
   const scope = (kind: string) => ({ and: ['file.ext == "md"', 'note.TSNotesID != null', `note["Record Type"] == "${kind}"`] });
-  const columns = ["formula.Title", "formula.Creator", "note.Site", "formula.Duration", "note.Playlists", "note.Created time", "formula.Play"];
+  const columns = ["formula.Title", "formula.Creator", "note.Site", "formula.Duration", "note.Playlists", "note.Subtitles", "note.AI Notes", "note.Created time", "formula.Play"];
   const table = (name: string) => ({ type: "table", name, order: columns, sort: [{ property: "note.Created time", direction: "DESC" }] });
   const view = (path: string, config: unknown): LibraryView => ({ path, content: JSON.stringify(config, null, 2) + "\n" });
   return [

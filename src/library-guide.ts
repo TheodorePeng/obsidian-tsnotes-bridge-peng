@@ -5,12 +5,12 @@ interface GuidePaths {
 
 export function libraryGuideContent(paths: GuidePaths): string {
   const { root, videos, playlists, videoBase, playlistBase, membersBase } = paths;
-  const videoFolder = videoBase.slice(root.length + 1, videoBase.lastIndexOf("/"));
-  const playlistFolder = playlistBase.slice(root.length + 1, playlistBase.lastIndexOf("/"));
+  const videoFolder = videos.slice(root.length + 1).replace(/\/_records$/, "");
+  const playlistFolder = playlists.slice(root.length + 1).replace(/\/_records$/, "");
   const fence = "```";
   return `# TSNotes 视频库使用说明
 
-这份说明和共享的 Playlist Videos.base 放在一起，便于以后查阅和修改。它不是 Playlist 记录，不会出现在 Playlist 总览中。你可以补充自己的说明，插件只在文件缺失时创建它，不会在保存视频或重新加载时覆盖已有内容。
+这份说明位于 _data/README.md，解释视频库结构和正式关系数据。它不是 Playlist 记录，不会出现在 Playlist 总览中。你可以补充自己的说明，插件只在文件缺失时创建它，不会在保存视频或重新加载时覆盖已有内容。
 
 ## 日常从哪里开始
 
@@ -22,18 +22,15 @@ export function libraryGuideContent(paths: GuidePaths): string {
 
 ${fence}
 ${root}/
-├── ${videoFolder}/
-│   ├── Videos.base              视频总览
-│   └── _records/                每个视频的唯一主笔记
-├── ${playlistFolder}/
-│   ├── Playlists.base           Playlist 总览
-│   └── _records/
-│       ├── README.md           当前说明文档
-│       ├── Playlist Videos.base 共享视图规则
-│       └── 各个 Playlist.md     身份、成员链接、个人说明和视图嵌入
+├── Videos.base                  视频总览
+├── Playlists.base               Playlist 总览
+├── ${videoFolder}/_records/      视频主笔记与个人正文
+├── ${playlistFolder}/_records/   Playlist 索引与共享 Playlist Videos.base
+├── Resources/
+│   └── 视频UUID/                按需创建的字幕、AI 笔记和 assets 图片
 └── _data/
-    └── playlists/
-        └── UUID.json           插件维护的列表成员和来源顺序
+    ├── README.md                当前说明
+    └── playlists/UUID.json      正式成员关系及来源序号
 ${fence}
 
 上面的目录树中，视频实际存放于 ${videos}，Playlist 索引实际存放于 ${playlists}。同一视频加入多个 Playlist 时，仍然只保留一篇主笔记，不会在每个列表下复制视频文件。
@@ -102,6 +99,14 @@ List order 公式在当前 Playlist 的 Videos 链接中查找当前视频，得
 Base 的 New 按钮只会创建普通文件，不会采集网站资料或生成完整 TSNotes 身份。新视频和 Playlist 仍从浏览器的 TSNotes 保存入口创建。Save to Obsidian 默认创建资料记录，重复保存以定位为主；不会替你写视频正文。你主动执行 Insert current VideoPlay timestamp link 命令时，才会向当前编辑器插入时间链接。
 
 播放列取自 URL-TSNotes，点击后交给 TSNotes Bridge 控制该 Vault 绑定的浏览器 VideoPlay。浏览器中的“保存目标 Vault”和“从哪个 Vault 发起播放”是两个独立概念；视图筛选本身无需浏览器连接，也不会主动采集网站内容。
+
+## 字幕与百度 AI 笔记
+
+NotionImporter 独立选择导入目标；首次在 TSNotes 中授权扩展实例后，复用已有 Vault 配对。只有主动导入时才创建 Resources/<视频UUID>/，不会创建空资源。
+
+视频主笔记的 Subtitles、AI Notes 属性链接到资源。每篇资源有独立 ResourceID、TSNotes Parent ID 与 Video 回链；不能复制主笔记的 TSNotesID。主笔记正文保留个人笔记，不嵌入长字幕。
+
+重复导入默认跳过。手动更新需预览确认；已被个人修改的资源正文不自动覆盖。字幕有时间链接，百度 AI 笔记的图片保存到本地 assets。默认不另存 SRT，仍可使用下载入口。
 
 ## 哪些文件应保留
 
