@@ -1,6 +1,6 @@
 # TSNotes × Obsidian
 
-版本：浏览器扩展 0.8.12 / TSNotes Bridge Peng 0.1.12 / 桥接能力 1.1（HTTP 兼容 1.0）。桌面 macOS；首轮验收环境 ego lite。
+版本：浏览器扩展 0.8.14 / TSNotes Bridge Peng 0.1.15 / 桥接能力 1.2（HTTP 兼容 1.0，资源导入 resource-import-v1）。桌面 macOS；首轮验收环境 ego lite。
 
 ## 安装和配对
 
@@ -56,7 +56,7 @@ Properties、阅读视图、实时预览与弹出窗口中的 TSNotes 链接由�
 
 只有确认的 VideoPlay 存在时才保持 WebSocket，每 20 秒保活。关闭后释放连接、心跳和待执行播放。保存与查询按操作触发，不进行周期性全库扫描或页面采集。浏览器原时间戳入口保留既有复制及自动粘贴开关；Obsidian 保存目标不触发 Notion 自动粘贴，本次播放恢复也不写入笔记。
 
-不包含字幕、AI 总结、正文导入或其占位文档；这些交给 NotionImporter 单独开发。
+本插件自身不采集字幕、AI 总结或正文；这些由 NotionImporter 单独采集，再通过受限资源通道写入本 Vault（见「资源导入与库入口整理」）。
 
 ## 获取和插入 VideoPlay 时间链接
 
@@ -130,3 +130,15 @@ YouTube、Bilibili 和百度网盘的保存入口采用分区按钮：`保存图
 打开方式保存在 Vault 插件设置的 `recordOpenMode` 字段；旧配置缺少字段时默认 `window`。专用窗口身份独立保存于设备 Application Support 的 `<Vault UUID>.presentation.json`，不写入笔记，也不包含配对密钥。损坏身份文件会在替换前保留 `.corrupt-*` 副本。
 
 如果记录保存成功但窗口打开失败，结果会分别报告；重试不会重新创建视频主笔记。公开工作区 API 返回的位置异常时停止打开，避免替换其他笔记。
+
+## 资源导入与库入口整理（0.1.15，配套 TSNotes 0.8.14、NotionImporter 0.4.0）
+
+字幕和百度 AI 笔记由 NotionImporter 单独采集，在扩展授权后导入本 Vault。Bridge 只提供受限的资源读写操作：路径由 Bridge 决定，客户端不能提交任意路径或主笔记正文；不采集网站内容，不调用 AI 模型，也不需要 VideoPlay 连接。播放协议仍为 1.2，资源能力单独通过 `resource-import-v1` 声明。
+
+资源文档按需创建在 `Resources/<视频 TSNotesID>/`，不生成空目录。字幕与 AI 笔记各有独立 ResourceID，通过 TSNotes Parent ID 关联主视频，不复制主笔记的 TSNotesID，也不写入 `Record Type: video`。主笔记只增加 Subtitles 和 AI Notes 两个链接属性；个人正文永远不是远程写入目标。资源改名后受管链接会修复，不移动文件，也不产生第二条重复入口。
+
+重复导入默认跳过。手动更新先展示旧文与新文，确认后才写入；本地修改过的资源正文不覆盖，没有强制覆盖入口，更新前会备份旧文档。字幕保留时间链接，AI 笔记图片按 SHA-256 命名保存在本地 assets。
+
+库入口调整为 v3：`Videos.base` 和 `Playlists.base` 移到 TSNotes 根目录，使用说明移到 `_data/README.md`；视频与 Playlist 主记录、`_data/playlists` 关系 JSON 不动。迁移通过命令 **Preview library entry layout migration** 预览后确认，只移动上述三份文件，原生 rename 更新链接，README 保留原文并追加标记的 v3 说明。迁移日志和备份保存在本机 Application Support，不随 Vault 同步。迁移完成前，打开总览回退到旧位置，更新默认视图会被拒绝。
+
+详细说明见 [资源导入与库布局](docs/resource-import.md) 与 [验收记录](docs/resource-acceptance-20261023.md)。
