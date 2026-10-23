@@ -1,5 +1,5 @@
 {
-  "protocolVersion": "1.0",
+  "protocolVersion": "1.2",
   "actions": [
     "ensure",
     "find",
@@ -7,7 +7,8 @@
     "open",
     "consume-launch",
     "launch-result",
-    "status"
+    "status",
+    "report-playback"
   ],
   "requestFields": [
     "protocolVersion",
@@ -47,5 +48,60 @@
     "heartbeatMs": 20000,
     "maxPeers": 8
   },
-  "ownership": "Metadata only. No body-write, arbitrary path, eval or delete operations."
+  "ownership": "Metadata HTTP operations only. No remote body-write, arbitrary path, eval or delete operations. Explicit Obsidian editor commands may locally insert a validated time link.",
+  "supportedHttpVersions": [
+    "1.0",
+    "1.1",
+    "1.2"
+  ],
+  "webSocket": {
+    "authFields": [
+      "secret",
+      "protocolVersion",
+      "clientId",
+      "clientName",
+      "sessionId",
+      "capabilities"
+    ],
+    "capabilities": [
+      "play",
+      "capture-link",
+      "playback-v2"
+    ],
+    "requestTypes": [
+      "play",
+      "capture-link"
+    ],
+    "resultTypes": [
+      "play-result",
+      "capture-link-result",
+      "play-accepted"
+    ],
+    "captureFields": [
+      "url",
+      "seconds",
+      "sampledAt",
+      "sessionId",
+      "playbackIdentity"
+    ],
+    "captureTimeoutMs": 8000,
+    "routing": "Per-vault machine-local browser bundle to explicit clientId binding; no last-client fallback."
+  },
+  "playback": {
+    "acceptedTimeoutMs": 1500,
+    "launchReceiveMs": 30000,
+    "windowMs": 15000,
+    "locateMs": 30000,
+    "operationTtlMs": 120000,
+    "diagnosticLimit": 20,
+    "retryMs": [
+      1000,
+      2000,
+      4000,
+      8000,
+      16000
+    ],
+    "temporaryParameter": "__tsnotes_open",
+    "binding": "Other profiles may play locally; never change the selected client or sample from them."
+  }
 }

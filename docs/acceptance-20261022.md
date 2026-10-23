@@ -1,5 +1,7 @@
 # TSNotes × Obsidian 交付验收记录
 
+> 最新 0.8.12 / 0.1.11 紧凑按钮、Base 与待确认迁移范围见 [本轮记录](library-acceptance-20261022.md)。后续内容保留为历史证据。
+
 当前源码：TSNotes 0.8.9 / TSNotes Bridge Peng 0.1.6；协议 1.0。
 
 两仓库使用 `codex/obsidian-integration`，已将通过核心验收的实现合并至 main，并保留开发分支。没有 push、发布或修改 NotionImporter。配置凭据不进入本记录。
@@ -88,3 +90,34 @@ Task Space：1，名称 TSNotes Obsidian integration。曾两次收到 Ego 的�
 恢复原默认保存目标 Notion、选中 Math Peng，并保持联动启用；AI Coding 的配对和插件保留，可继续测试。测试播放窗口关闭后，扩展连接数为 0，两端 Vault 的 connected 均为 false。Space 11 保留 p1 扩展详情和 p6 配对页面，最后实时 ownership=agent；没有 handOff/finish。
 
 本轮结果满足已选择的日常补测范围。未将短时观察、单一进程堆数据或没有崩溃当作整机稳定性保证。
+
+## Tabbit 启动目标补充验收（插件 0.1.7）
+
+设置中的启动浏览器新增 Tabbit（本机应用标识 `com.tabbit-ai.Tabbit`）。Math Peng 的启动目标从 ego lite 改为 Tabbit，原 Vault ID、配对密钥、端口、来源绑定及 Vault 内 data.json 保持不变；两次定向重载后选择仍为 Tabbit。只部署 Math Peng，浏览器扩展仍为 0.8.9。
+
+针对 `TSNotes QA Retained/Homebrew renamed.md`：阅读视图链接的模拟点击被插件阻止默认打开并交给播放方法；测试临时替换播放方法后立即恢复，没有在这一步启动浏览器。随后用户亲自点击「QA 00:35」，明确确认“直接进入 VideoPlay，并定位到 00:35”。Obsidian 同时观测到 connected=true、launching=false、pending=0；文档 SHA-256 未变。
+
+源码 typecheck、14 项测试、build、diff 检查通过，部署产物与构建一致。Tabbit 官方自动控制接口初始化失败，因此窗口结果来自用户实际操作确认，未获得 Tabbit 自动化 tab ID 或媒体时间读数，也未宣称完成 Tabbit 全功能回归。旧运行产物及设置备份在本机临时目录 `tsnotes-bridge-backup-QYO6Yw` 中保留。
+
+## 实时预览正文点击修复（插件 0.1.8）
+
+0.1.7 的 Tabbit 单次确认不足以证明所有正文视图均通过；用户后续反馈实时预览正文仍进入默认浏览器。此次在 Math Peng 的运行中编辑器诊断确认：Obsidian 自带 mousedown 处理器返回 true，后续 TSNotes 编辑器处理器未执行；直接调用 TSNotes 处理器则能解析原链接。实时预览标签为不带 href 的 cm-link/cm-underline span，原文档级点击入口只识别 anchor，无法补接。
+
+修复将实时预览标签按所属 EditorView 的 DOM 位置解析回 Markdown URL，统一由文档捕获阶段处理 click，移除会被前序处理器阻断的编辑器 mousedown 入口。Properties、阅读视图仍使用原有 href 解析。没有改动播放协议、配对或浏览器扩展，不增加自动正文写入。
+
+| 动作 | 结果与证据 |
+| --- | --- |
+| 新增解析回归测试，先运行再修复 | 新测试先失败，修复后全部 16 项通过；覆盖无 href 标签、两种参数顺序、百度路径编码、Properties、无关目标及脱离编辑器节点 |
+| 实时预览正文第一条链接，原先无 VideoPlay | 原生鼠标点击后冷启动成功；只创建 tab 1667288189，成为最终 VideoPlay window 1667288190；创建/关闭事件观测中没有丢弃的中转标签，定位回执 success=true |
+| 实时预览正文第二条链接，已有 VideoPlay | 原生鼠标点击；相同 tab ID，未新增/关闭标签页；媒体 seeked 记录 35.024813 秒，Obsidian pending=0 |
+| Properties 的 URL-TSNotes | 原生鼠标点击；相同 tab ID，未新增标签页，媒体定位 35.011229 秒 |
+| 阅读视图正文链接 | 通过真实文档 DOM click 触发，非原生鼠标；相同 tab ID，媒体定位 35 秒，未新增标签页 |
+
+实际浏览器为 ego lite，TSNotes 0.8.9，已确认加载 TSNotes/dist；未修改或重载扩展。Math Peng Bridge 0.1.8 通过 CLI 定向重载，data.json 与示例 Markdown 的 SHA-256 均保留。旧产物及设置备份目录为 `tsnotes-bridge-backup-Hb2m1k`。
+
+用户明确授权新建本轮唯一替代 Space，ID 2，名称“TSNotes正文链接修复验收”；保留 p1 扩展详情、p2 配对页面及最终 VideoPlay。测试只覆盖本次故障相关入口，没有重复压力测试。Tabbit 按用户要求未测试；多浏览器同时在线时的连接选择问题不属于本次正文入口修复，未更改其行为。
+
+
+## 0.8.10 / 0.1.9 时间链接命令
+
+新增显式浏览器实例绑定、复制与安全插入命令，详见同目录 time-link-acceptance-20261022.md。此前记录保留为历史证据，不代表最新版本状态。

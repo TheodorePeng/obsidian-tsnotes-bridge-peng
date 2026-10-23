@@ -13,6 +13,7 @@ export interface FieldRule {
   records: "all" | "video" | "playlist";
 }
 export interface BridgeSettings {
+  recordOpenMode: "window" | "tab";
   vaultId?: string;
   root: string;
   videos: string;
@@ -20,6 +21,7 @@ export interface BridgeSettings {
   fields: Record<string, FieldRule>;
 }
 export const defaults: BridgeSettings = {
+  recordOpenMode: "window",
   root: "TSNotes",
   videos: "Videos",
   playlists: "Playlists",

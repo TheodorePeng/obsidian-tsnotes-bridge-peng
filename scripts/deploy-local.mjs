@@ -18,6 +18,15 @@ for (const name of ["main.js", "manifest.json", "styles.css", "data.json"]) {
     if (e.code !== "ENOENT") throw e;
   }
 }
+// Back up the device presentation identity separately; never print its contents.
+try {
+  const data = JSON.parse(await readFile(join(dest,"data.json"),"utf8"));
+  if(typeof data.vaultId==="string" && /^[a-f0-9-]{36}$/i.test(data.vaultId)){
+    const file=join(homedir(),"Library","Application Support","TSNotes Bridge Peng",data.vaultId+".presentation.json");
+    try {const bytes=await readFile(file);hashes["presentation.json"]=createHash("sha256").update(bytes).digest("hex");await copyFile(file,join(backup,"presentation.json"));}
+    catch(e){if(e.code!=="ENOENT")throw e;}
+  }
+} catch(e){if(e.code!=="ENOENT")throw e;}
 await writeFile(join(backup, "baseline.json"), JSON.stringify(hashes), {
   mode: 0o600,
 });

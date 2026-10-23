@@ -24,6 +24,7 @@ test("loopback authentication, single-use tickets, idempotency and shutdown", as
     port: 0,
     origin: "",
     browserBundle: "com.citrolabs.ego.lite",
+    browserBindings:{"com.citrolabs.ego.lite":"11111111-1111-4111-8111-111111111111"},
   };
   let writes = 0;
   const bridge = new BridgeServer(
@@ -38,6 +39,7 @@ test("loopback authentication, single-use tickets, idempotency and shutdown", as
     requestId = crypto.randomUUID(),
     auth = true,
   ) => {
+    if (["consume-launch","launch-result"].includes(action)) payload={clientId:"11111111-1111-4111-8111-111111111111",...payload};
     const r = await fetch(`http://127.0.0.1:${state.port}/v1`, {
       method: "POST",
       headers: {

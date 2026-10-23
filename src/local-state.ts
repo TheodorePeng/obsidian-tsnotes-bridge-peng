@@ -8,6 +8,7 @@ export interface LocalState {
   port: number;
   origin: string;
   browserBundle: string;
+  browserBindings?: Record<string, string>;
 }
 export async function loadLocalState(
   vaultPath: string,
@@ -49,6 +50,7 @@ export async function loadLocalState(
     };
   }
   file = join(dir, state.vaultId + ".json");
+  state.browserBindings ||= {};
   const save = async () => {
     const tmp = file + ".tmp";
     await writeFile(tmp, JSON.stringify(state), { mode: 0o600 });

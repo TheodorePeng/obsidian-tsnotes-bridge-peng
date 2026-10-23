@@ -2,7 +2,7 @@ import { App, TFile, parseYaml, stringifyYaml } from "obsidian";
 import { safePath, type Fields, type BridgeSettings } from "./model";
 import { libraryGuide, libraryPaths, libraryViews } from "./library";
 import type { RecordStorage, Relation } from "./records";
-export function storageFor(app: App): RecordStorage {
+export function storageFor(app: App, presentation: { open(file: TFile): Promise<void> }): RecordStorage {
   const directory = async (path: string) => {
     const chunks = safePath(path).split("/");
     let current = "";
@@ -76,7 +76,7 @@ export function storageFor(app: App): RecordStorage {
     open: async (path) => {
       const file = app.vault.getAbstractFileByPath(path);
       if (!(file instanceof TFile)) throw Error("document_missing");
-      await app.workspace.getLeaf(false).openFile(file, { active: true });
+      await presentation.open(file);
     },
   };
 }

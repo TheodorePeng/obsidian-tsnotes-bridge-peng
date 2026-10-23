@@ -1,7 +1,9 @@
+import { PlaybackOperations } from "./playback-operations";
 import { createServer, type Server } from "node:http";
 import { randomBytes, timingSafeEqual, createHash } from "node:crypto";
-import { WebSocketServer, WebSocket } from "ws";
+import { WebSocketServer } from "ws";
 import type { LocalState } from "./local-state";
+import { ClientSessions } from "./client-sessions";
 const LIMIT = 1024 * 1024;
 export interface RequestEnvelope {
   protocolVersion: string;
@@ -12,13 +14,9 @@ export interface RequestEnvelope {
 export class BridgeServer {
   private server: Server;
   private wss: WebSocketServer;
-  private peer: WebSocket | null = null;
-  private tickets = new Map<string, { url: string; expires: number }>();
-  private launches = new Map<string, { url: string; expires: number; result?: {success: boolean; reason: string} }>();
-  private pending = new Map<
-    string,
-    { resolve: (value: unknown) => void; timer: ReturnType<typeof setTimeout> }
-  >();
+  private sessions: ClientSessions;
+  private tickets = new Map<string, { url: string; expires: number; clientId: string; target: string }>();
+  private launches = new Map<string, { url: string; expires: number; clientId: string; target: string; result?: {success: boolean; reason: string} }>();
   private results = new Map<
     string,
     { signature: string; value: Promise<unknown>; bytes: number }
@@ -31,12 +29,15 @@ export class BridgeServer {
       this.results.delete(key);
     }
   }
+  readonly playback: PlaybackOperations;
   diagnostics = { httpRequests: 0, heartbeats: 0, playRequests: 0 };
   constructor(
     readonly local: LocalState,
     private saveLocal: () => Promise<void>,
     private action: (request: RequestEnvelope) => Promise<unknown>,
   ) {
+    this.playback = new PlaybackOperations(()=>this.sessions.targetKey());
+    this.sessions = new ClientSessions(local, () => { this.diagnostics.heartbeats++; });
     this.server = createServer((req, res) => {
       void (async () => {
         res.setHeader("Content-Type", "application/json");
@@ -69,7 +70,7 @@ export class BridgeServer {
           Buffer.concat(chunks).toString(),
         ) as RequestEnvelope;
         if (
-          r.protocolVersion !== "1.0" ||
+          !["1.0", "1.1", "1.2"].includes(r.protocolVersion) ||
           !r.requestId ||
           r.requestId.length > 120 ||
           !r.payload ||
@@ -81,6 +82,7 @@ export class BridgeServer {
             "consume-launch",
             "launch-result",
             "status",
+            "report-playback",
           ].includes(r.action)
         )
           throw Error("invalid_request");
@@ -139,47 +141,7 @@ export class BridgeServer {
         ws.close(1008);
         return;
       }
-      let authenticated = false;
-      const authTimer = setTimeout(() => ws.close(1008), 3000);
-      ws.on("message", (bytes) => {
-        try {
-          const msg = JSON.parse(bytes.toString());
-          if (!authenticated) {
-            if (
-              msg.type !== "auth" ||
-              !this.equal(String(msg.secret || ""), local.secret)
-            ) {
-              ws.close(1008);
-              return;
-            }
-            authenticated = true;
-            clearTimeout(authTimer);
-            this.peer?.close(1000);
-            this.peer = ws;
-            ws.send(JSON.stringify({ type: "ready" }));
-            return;
-          }
-          if (msg.type === "ping") {
-            this.diagnostics.heartbeats++;
-            ws.send(JSON.stringify({ type: "pong" }));
-          }
-          if (msg.type === "play-result") {
-            const p = this.pending.get(msg.requestId);
-            if (p) {
-              clearTimeout(p.timer);
-              this.pending.delete(msg.requestId);
-              p.resolve(msg.result);
-            }
-          }
-        } catch {
-          ws.close(1008);
-        }
-      });
-      ws.on("close", () => {
-        clearTimeout(authTimer);
-        if (this.peer === ws) this.peer = null;
-      });
-      ws.on("error", () => ws.close());
+      this.sessions.attach(ws);
     });
   }
   private equal(a: string, b: string): boolean {
@@ -189,26 +151,27 @@ export class BridgeServer {
   }
   private async execute(r: RequestEnvelope): Promise<unknown> {
     if (r.action === "status")
-      return { vaultId: this.local.vaultId, connected: this.connected };
+      return { vaultId: this.local.vaultId, connected: this.connected, protocolVersion: "1.2" };
+    if(r.action==="report-playback")return this.playback.report(r.payload);
     if (r.action === "consume-launch") {
       const ticket = String(r.payload.ticket || ""),
         p = this.tickets.get(ticket);
-      this.tickets.delete(ticket);
-      if (!p || p.expires < Date.now() || p.url !== r.payload.url)
+      if (!p || p.expires < Date.now() || p.url !== r.payload.url || p.clientId !== r.payload.clientId || p.target !== this.sessions.targetKey())
         throw Error("launch_ticket_invalid");
+      this.tickets.delete(ticket);
       this.launches.set(ticket, p);
       return { url: p.url };
     }
     if (r.action === "launch-result") {
       const p = this.launches.get(String(r.payload.ticket || ""));
-      if (!p || p.expires < Date.now() || p.url !== r.payload.url || p.result || typeof r.payload.success !== "boolean") throw Error("launch_ticket_invalid");
+      if (!p || p.expires < Date.now() || p.url !== r.payload.url || p.clientId !== r.payload.clientId || p.target !== this.sessions.targetKey() || p.result || typeof r.payload.success !== "boolean") throw Error("launch_ticket_invalid");
       p.result = {success: r.payload.success, reason: String(r.payload.reason || "playback_not_located").slice(0,120)};
       return {received:true};
     }
     return this.action(r);
   }
   get connected(): boolean {
-    return this.peer?.readyState === WebSocket.OPEN;
+    return this.sessions.connected;
   }
   async start(): Promise<void> {
     await new Promise<void>((resolve, reject) => {
@@ -229,7 +192,7 @@ export class BridgeServer {
       if (p.expires < Date.now()) this.tickets.delete(key);
     if (this.tickets.size + this.launches.size >= 16) throw Error("launch_busy");
     const key = randomBytes(32).toString("hex");
-    this.tickets.set(key, { url, expires: Date.now() + 30000 });
+    this.tickets.set(key, { url, expires: Date.now() + 30000, clientId: this.sessions.targetId(), target: this.sessions.targetKey() });
     return key;
   }
   takeLaunchResult(ticket: string) {
@@ -238,32 +201,35 @@ export class BridgeServer {
     this.launches.delete(ticket);
     return p.result;
   }
-  play(url: string): Promise<unknown> {
-    if (!this.connected) return Promise.reject(Error("browser_disconnected"));
-    if (this.pending.size >= 8) return Promise.reject(Error("play_busy"));
-    this.diagnostics.playRequests++;
-    const requestId = randomBytes(16).toString("hex");
-    return new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(requestId);
-        resolve({ success: false, reasonCode: "play_timeout" });
-      }, 20000);
-      this.pending.set(requestId, { resolve, timer });
-      this.peer!.send(JSON.stringify({ type: "play", url, requestId, expiresAt: Date.now() + 19000 }));
+  clients() { return this.sessions.list(); }
+  targetKey() { return this.sessions.targetKey(); }
+  get pending() { return this.sessions.pending; }
+  async bindClient(clientId: string): Promise<void> {
+    const client=this.clients().find(c=>c.clientId===clientId&&c.capabilities.includes("capture-link"));
+    if(!client)throw Error("browser_update_required");
+    this.invalidateTarget();
+    this.local.browserBindings={...this.local.browserBindings,[this.local.browserBundle]:clientId};
+    await this.saveLocal();
+  }
+  invalidateTarget():void { this.playback.cancel();this.sessions.cancel(); this.tickets.clear(); this.launches.clear(); }
+  supportsPlaybackV2():boolean{return this.sessions.supportsPlaybackV2();}
+  async playV2(url:string,id:string):Promise<boolean>{
+    const clientId=this.sessions.targetId();
+    return this.sessions.playV2(url,id,()=>{this.playback.report({operationId:id,clientId,phase:"received"});},value=>{
+      const r=value as {success?:boolean;reason?:string;reasonCode?:string;pausedAfterLocate?:boolean};
+      this.playback.report({operationId:id,clientId,phase:r.success?"located":"failed",reasonCode:r.pausedAfterLocate?"playback_requires_user_gesture":r.reason||r.reasonCode});
     });
   }
+  async capture():Promise<unknown> { return this.sessions.request("capture-link",{}); }
+  async play(url: string): Promise<unknown> {
+    this.diagnostics.playRequests++;
+    return this.sessions.request("play",{url});
+  }
   stop(): void {
-    this.peer = null;
+    this.playback.cancel();this.sessions.stop();
     for (const ws of this.wss.clients) ws.terminate();
     this.wss.close();
     this.server.close();
-    for (const p of this.pending.values()) {
-      clearTimeout(p.timer);
-      p.resolve({ success: false, reasonCode: "bridge_stopped" });
-    }
-    this.pending.clear();
-    this.tickets.clear();
-    this.launches.clear();
-    this.results.clear();
+    this.tickets.clear();this.launches.clear();this.results.clear();
   }
 }
