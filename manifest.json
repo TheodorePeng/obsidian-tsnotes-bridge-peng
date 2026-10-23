@@ -1,7 +1,7 @@
 {
   "id": "tsnotes-bridge-peng",
   "name": "TSNotes Bridge Peng",
-  "version": "0.1.6",
+  "version": "0.1.14",
   "minAppVersion": "1.8.0",
   "description": "Create and locate video records, and control TSNotes VideoPlay.",
   "author": "Peng",
