@@ -27,9 +27,9 @@ function fixture() {
     exists: (p) =>
       files.has(p) ||
       [...files.keys()].some((path) => path.startsWith(p + "/")),
-    create: async (p, props) => {
+    create: async (p, props, body = "") => {
       assert(!files.has(p));
-      files.set(p, { props: structuredClone(props), body: "" });
+      files.set(p, { props: structuredClone(props), body });
     },
     update: async (p, change) => {
       change(files.get(p).props);
@@ -167,7 +167,7 @@ test("1000 synthetic indexed records and ordered playlist membership without bod
   const relation = [...f.relations.values()][0];
   assert.equal(relation.members.length, 500);
   assert.equal(relation.members[0].sourceIndex, 1);
-  assert([...f.files.values()].every((f) => f.body === ""));
+  assert([...f.files.values()].filter(f => f.props["Record Type"] === "video").every((f) => f.body === ""));
 });
 test("write succeeds even if open fails; no recreate to fix display", async () => {
   const f = fixture();

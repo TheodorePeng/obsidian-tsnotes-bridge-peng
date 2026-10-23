@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { libraryPaths, playlistEmbed } from "./library";
 import {
   assertCompatible,
   defaults,
@@ -24,7 +25,8 @@ export interface Relation {
   members: { videoId: string; sourceIndex: number | null; sourceKey: string }[];
 }
 export interface RecordStorage {
-  create: (path: string, props: Fields) => Promise<void>;
+  create: (path: string, props: Fields, initialBody?: string) => Promise<void>;
+  ensureLibrary?: (settings: BridgeSettings) => Promise<void>;
   update: (path: string, change: (props: Fields) => void) => Promise<void>;
   verify: (path: string, id: string) => Promise<void>;
   exists: (path: string) => boolean;
@@ -155,6 +157,7 @@ export class IdentityIndex {
 }
 export class RecordService {
   readonly index = new IdentityIndex();
+  maintenanceActive = false;
   private tail: Promise<unknown> = Promise.resolve();
   constructor(
     private storage: RecordStorage,
@@ -164,6 +167,12 @@ export class RecordService {
     const next = this.tail.catch(() => undefined).then(task);
     this.tail = next;
     return next;
+  }
+  async maintain<T>(task: () => Promise<T>): Promise<T> {
+    if (this.maintenanceActive) throw Error("library_maintenance_in_progress");
+    this.maintenanceActive = true;
+    try { return await this.serial(task); }
+    finally { this.maintenanceActive = false; }
   }
   private async patch(
     entry: Entry,
@@ -193,10 +202,13 @@ export class RecordService {
     return entry;
   }
   async ensure(value: unknown, open = true): Promise<unknown> {
+    if (this.maintenanceActive) throw Error("library_maintenance_in_progress");
     return this.serial(async () => {
+      if (this.maintenanceActive) throw Error("library_maintenance_in_progress");
       const p = validatePrepared(value),
         settings = this.settings(),
         root = safePath(settings.root);
+      await this.storage.ensureLibrary?.(settings);
       let entry = this.index.find(p),
         created = false,
         parent: Entry | null = null;
@@ -212,16 +224,7 @@ export class RecordService {
           throw Error("playlist_identity_conflict");
         if (!parent) {
           const id = randomUUID(),
-            base =
-              root +
-              "/" +
-              safePath(settings.playlists) +
-              "/" +
-              fileName(text(p.parent.fields.title)),
-            folder = this.storage.exists(base)
-              ? base + "-" + id.slice(0, 8)
-              : base,
-            path = folder + "/Playlist.md";
+            path = this.path(libraryPaths(settings).playlists, text(p.parent.fields.title), id);
           const props: Fields = {
             TSNotesID: id,
             "Record Type": "playlist",
@@ -233,7 +236,7 @@ export class RecordService {
             "Relations Path": root + "/_data/playlists/" + id + ".json",
             ...mapped(p.parent.fields, settings, "playlist"),
           };
-          await this.storage.create(path, props);
+          await this.storage.create(path, props, playlistEmbed(settings));
           parent = { path, props };
           this.index.set(parent);
           await this.storage.writeRelation(text(props["Relations Path"]), {
@@ -246,9 +249,7 @@ export class RecordService {
       }
       if (!entry) {
         const id = randomUUID(),
-          folder = parent
-            ? parent.path.slice(0, parent.path.lastIndexOf("/"))
-            : root + "/" + safePath(settings.videos),
+          folder = libraryPaths(settings).videos,
           path = this.path(folder, text(p.record.fields.title), id);
         const props: Fields = {
           TSNotesID: id,
@@ -384,9 +385,15 @@ export class RecordService {
     });
   }
   async reconcileLinks(): Promise<void> {
-    return this.serial(async () => {
+    return this.serial(() => this.reconcileNow());
+  }
+  async reconcileDuringMaintenance(allowedPaths?: Set<string>): Promise<void> {
+    if (!this.maintenanceActive) throw Error("maintenance_required");
+    await this.reconcileNow(allowedPaths);
+  }
+  private async reconcileNow(allowedPaths?: Set<string>): Promise<void> {
       for (const parent of [...this.index.entries.values()].filter(
-        (e) => e.props["Record Type"] === "playlist",
+        (e) => e.props["Record Type"] === "playlist" && (!allowedPaths || allowedPaths.has(e.path)),
       )) {
         const relation = this.validateRelation(
           parent,
@@ -404,7 +411,7 @@ export class RecordService {
           });
       }
       for (const video of [...this.index.entries.values()].filter(
-        (e) => e.props["Record Type"] === "video",
+        (e) => e.props["Record Type"] === "video" && (!allowedPaths || allowedPaths.has(e.path)),
       )) {
         const links = array(video.props["Playlist IDs"])
           .map((id) => this.index.byId(id))
@@ -418,14 +425,15 @@ export class RecordService {
             props.Playlists = links;
           });
       }
-    });
   }
   async refresh(
     value: unknown,
     apply = false,
     expected?: { documentId?: unknown; changes?: unknown },
   ): Promise<unknown> {
+    if (this.maintenanceActive) throw Error("library_maintenance_in_progress");
     return this.serial(async () => {
+      if (this.maintenanceActive) throw Error("library_maintenance_in_progress");
       const p = validatePrepared(value),
         entry = this.index.find(p);
       if (!entry) throw Error("record_not_found");

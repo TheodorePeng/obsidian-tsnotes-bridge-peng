@@ -1,5 +1,6 @@
 import { App, TFile, parseYaml, stringifyYaml } from "obsidian";
-import { safePath, type Fields } from "./model";
+import { safePath, type Fields, type BridgeSettings } from "./model";
+import { libraryGuide, libraryPaths, libraryViews } from "./library";
 import type { RecordStorage, Relation } from "./records";
 export function storageFor(app: App): RecordStorage {
   const directory = async (path: string) => {
@@ -28,10 +29,11 @@ export function storageFor(app: App): RecordStorage {
         throw Error("document_identity_changed");
     },
     exists: (path) => !!app.vault.getAbstractFileByPath(path),
-    create: async (path, props) => {
+    ensureLibrary: async settings => ensureLibraryViews(app, settings),
+    create: async (path, props, initialBody = "") => {
       safePath(path);
       await directory(path.slice(0, path.lastIndexOf("/")));
-      await app.vault.create(path, "---\n" + stringifyYaml(props) + "---\n");
+      await app.vault.create(path, "---\n" + stringifyYaml(props) + "---\n" + initialBody);
     },
     update: async (path, change) => {
       safePath(path);
@@ -77,4 +79,30 @@ export function storageFor(app: App): RecordStorage {
       await app.workspace.getLeaf(false).openFile(file, { active: true });
     },
   };
+}
+
+const initializingViews = new WeakMap<App, Promise<void>>();
+export async function ensureLibraryViews(app: App, settings: BridgeSettings): Promise<void> {
+  const previous = initializingViews.get(app) || Promise.resolve();
+  const task = previous.catch(() => undefined).then(() => createMissingViews(app, settings));
+  initializingViews.set(app, task);
+  try { await task; } finally { if (initializingViews.get(app) === task) initializingViews.delete(app); }
+}
+async function createMissingViews(app: App, settings: BridgeSettings): Promise<void> {
+  const paths = libraryPaths(settings);
+  if (!app.vault.getAbstractFileByPath(paths.membersBase) && app.vault.getAbstractFileByPath(`${paths.root}/_data/views/Playlist Videos.base`))
+    throw Error(`请先在 Obsidian 中将旧共享 Base 移动到 ${paths.membersBase}，以保留已有视图设置及引用。`);
+  for (const view of [...libraryViews(settings), libraryGuide(settings)]) {
+    const existing = app.vault.getAbstractFileByPath(view.path);
+    if (existing) {
+      if (!(existing instanceof TFile)) throw Error("library_view_path_conflict");
+      continue; // A customized Base is never rewritten by initialization or saving.
+    }
+    const parts = view.path.split("/"); parts.pop(); let folder = "";
+    for (const part of parts) {
+      folder = folder ? folder + "/" + part : part;
+      if (!app.vault.getAbstractFileByPath(folder)) await app.vault.createFolder(folder);
+    }
+    await app.vault.create(view.path, view.content);
+  }
 }
