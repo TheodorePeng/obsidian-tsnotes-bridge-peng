@@ -7,6 +7,7 @@ import type { RecordService } from "./records";
 import { safePath, text, type BridgeSettings, type Fields } from "./model";
 import { libraryViews, type LibraryView } from "./library";
 import { legacyViewPath } from "./layout-migration";
+import {assertLibraryLayout} from "./obsidian-storage";
 import { beginLibraryMigration, hash, migrationPreviewMarkdown, planLibraryMigration, rollbackLibraryMigration, runLibraryMigration, type MigrationIO, type MigrationJournal, type MigrationPlan, type MigrationSnapshot } from "./library-migration";
 
 export interface ViewChange extends LibraryView { beforeHash: string | null; changed: boolean; }
@@ -174,6 +175,7 @@ export class LibraryMaintenance {
     });
   }
   private assertEntryLayout(): void {
+    assertLibraryLayout(this.app, this.settings());
     for(const view of libraryViews(this.settings())){const old=legacyViewPath(view.path,this.settings());if(old&&this.app.vault.getAbstractFileByPath(old))throw Error("请先预览并迁移旧版库入口，再更新默认视图");}
   }
 }

@@ -1,16 +1,16 @@
 interface GuidePaths {
-  root: string; videos: string; playlists: string;
+  root: string; storageRoot: string; videos: string; playlists: string;
   videoBase: string; playlistBase: string; membersBase: string;
 }
 
 export function libraryGuideContent(paths: GuidePaths): string {
   const { root, videos, playlists, videoBase, playlistBase, membersBase } = paths;
-  const videoFolder = videos.slice(root.length + 1).replace(/\/_records$/, "");
-  const playlistFolder = playlists.slice(root.length + 1).replace(/\/_records$/, "");
+  const videoFolder = videos.slice(paths.storageRoot.length + 1).replace(/\/_records$/, "");
+  const playlistFolder = playlists.slice(paths.storageRoot.length + 1).replace(/\/_records$/, "");
   const fence = "```";
   return `# TSNotes 视频库使用说明
 
-这份说明位于 _data/README.md，解释视频库结构和正式关系数据。它不是 Playlist 记录，不会出现在 Playlist 总览中。你可以补充自己的说明，插件只在文件缺失时创建它，不会在保存视频或重新加载时覆盖已有内容。
+这份说明位于 Library/_data/README.md，解释视频库结构和正式关系数据。它不是 Playlist 记录，不会出现在 Playlist 总览中。你可以补充自己的说明，插件只在文件缺失时创建它，不会在保存视频或重新加载时覆盖已有内容。
 
 ## 日常从哪里开始
 
@@ -24,13 +24,14 @@ ${fence}
 ${root}/
 ├── Videos.base                  视频总览
 ├── Playlists.base               Playlist 总览
-├── ${videoFolder}/_records/      视频主笔记与个人正文
-├── ${playlistFolder}/_records/   Playlist 索引与共享 Playlist Videos.base
-├── Resources/
-│   └── 视频UUID/                按需创建的字幕、AI 笔记和 assets 图片
-└── _data/
-    ├── README.md                当前说明
-    └── playlists/UUID.json      正式成员关系及来源序号
+└── Library/                    实际资料，平时保持折叠
+    ├── ${videoFolder}/_records/      视频主笔记与个人正文
+    ├── ${playlistFolder}/_records/   Playlist 索引与共享 Playlist Videos.base
+    ├── Resources/
+    │   └── 视频UUID/                按需创建的字幕、AI 笔记和 assets 图片
+    └── _data/
+        ├── README.md                当前说明
+        └── playlists/UUID.json      正式成员关系及来源序号
 ${fence}
 
 上面的目录树中，视频实际存放于 ${videos}，Playlist 索引实际存放于 ${playlists}。同一视频加入多个 Playlist 时，仍然只保留一篇主笔记，不会在每个列表下复制视频文件。
@@ -83,6 +84,14 @@ ${fence}
 Base 显示时读取 Markdown 的 Properties；插件保存时维护 JSON 关系和对应的 Properties、内链。不要只手动改其中一处来增删成员，否则会与插件维护的数据不一致。维护成员时优先使用 TSNotes 的保存或列表导入入口。
 
 List order 公式在当前 Playlist 的 Videos 链接中查找当前视频，得出 1、2、3 等位置。这是已保存成员之间的相对顺序，不一定等于网站上的原始编号。需要按课程顺序显示时，在共享 Base 的排序菜单中选择 List order 升序。公式存在但排序为空时，并不保证按这一列排列。
+
+## 精简属性与原生类型
+
+标题采用 Markdown 文件名，不另外保存 Title。Duration 为唯一持久化时长，使用 MM:SS 或 HH:MM:SS；Base 的 DurationSeconds 是计算列，默认不展示、不写回文件。Parent Path 可从来源 File Path 推导，也不重复保存。
+
+开启“简洁属性显示”后，技术身份、查重、来源路径和哈希只在 TSNotes 管理笔记的 Properties 中隐藏，数据仍在 YAML 中。执行 Toggle technical properties for current note 可临时查看当前视图的完整属性；源码模式始终可以查看。用户新增属性不会被隐藏，不修改 Pretty Properties 的全局设置。
+
+Created time 使用原生 Date & time；关系使用 List；成员数量使用 Number；ID、时长、URL 使用 Text。属性类型按名称作用于整个 Vault，遇到同名类型冲突先核对，不强制转换其他笔记。ISO 时间中的 Z 表示 UTC，不要仅为美观删除它。
 
 ## 后续可以如何修改
 

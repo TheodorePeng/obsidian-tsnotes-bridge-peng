@@ -42,8 +42,8 @@ function fixture() {
 
 test("Bases query stable identities, embedded context and existing ordered links; configurable names do not rename Properties", () => {
   const views = lib.libraryViews(settings), video = JSON.parse(views[0].content), playlist = JSON.parse(views[1].content), members = JSON.parse(views[2].content);
-  assert.equal(views[2].path, "TSNotes/Playlists/_records/Playlist Videos.base");
-  assert(lib.playlistEmbed(settings).includes("![[TSNotes/Playlists/_records/Playlist Videos.base]]"));
+  assert.equal(views[2].path, "TSNotes/Library/Playlists/_records/Playlist Videos.base");
+  assert(lib.playlistEmbed(settings).includes("![[TSNotes/Library/Playlists/_records/Playlist Videos.base]]"));
   assert.deepEqual(video.views.map(v => v.name), ["All videos", "Standalone", "By site", "Gallery"]);
   assert(!JSON.stringify(video.filters).includes("inFolder"));
   assert(members.filters.and.includes('this["Record Type"] == "playlist"'));
@@ -51,7 +51,7 @@ test("Bases query stable identities, embedded context and existing ordered links
   assert(members.formulas.Sequence.includes("index + 1")); assert(members.formulas.Sequence.includes("value == file"));
   assert.equal(playlist.views[0].order.includes("note.Total Videos"), true);
   const changed = JSON.parse(lib.libraryViews({ ...settings, fields: { title: { name: "名称" } } })[0].content);
-  assert(changed.formulas.Title.includes('note["名称"]')); assert(changed.formulas.Title.includes('note["Title"]'));
+  assert.equal(changed.formulas.Title, "file.asLink(file.basename)");
   const original = "---\nfoo: bar\n---\nHuman course notes\n";
   const appended = lib.appendPlaylistEmbed(original, settings);
   assert(appended.startsWith(original)); assert.equal(lib.appendPlaylistEmbed(appended, settings), appended);
@@ -61,8 +61,8 @@ test("all new video records use one central folder, Playlist indexes embed Base,
   const files = new Map(), relations = new Map();
   const storage = { exists: path => files.has(path), verify: async (path, uuid) => assert.equal(files.get(path).props.TSNotesID, uuid), create: async (path, p, b = "") => files.set(path, { props: structuredClone(p), body: b }), update: async (path, change) => change(files.get(path).props), open: async () => {}, readRelation: async path => structuredClone(relations.get(path)), writeRelation: async (path, value) => relations.set(path, structuredClone(value)) };
   const service = new RecordService(storage, () => settings), video = { site: "youtube", mode: "playlist_video", record: { dedupeKey: "yt:v:abcdefghijk", fields: { title: "One", videoId: "abcdefghijk", url: "https://www.youtube.com/watch?v=abcdefghijk", dedupeUrl: "https://www.youtube.com/watch?v=abcdefghijk" } }, parent: { dedupeKey: "yt:pl:one", fields: { title: "Course", playlistId: "one", dedupeUrl: "https://www.youtube.com/playlist?list=one" } } };
-  const first = await service.ensure(video); assert.equal(first.path, "TSNotes/Videos/_records/One.md");
-  const parent = [...files].find(([, f]) => f.props["Record Type"] === "playlist"); assert.equal(parent[0], "TSNotes/Playlists/_records/Course.md"); assert(parent[1].body.includes("Playlist Videos.base"));
+  const first = await service.ensure(video); assert.equal(first.path, "TSNotes/Library/Videos/_records/One.md");
+  const parent = [...files].find(([, f]) => f.props["Record Type"] === "playlist"); assert.equal(parent[0], "TSNotes/Library/Playlists/_records/Course.md"); assert(parent[1].body.includes("Playlist Videos.base"));
   files.get(first.path).body = "User notes"; await service.ensure(video); assert.equal(files.get(first.path).body, "User notes");
   let release; const operation = service.maintain(() => new Promise(resolve => { release = resolve; })); await new Promise(resolve => setTimeout(resolve, 0));
   await assert.rejects(() => service.ensure(video), /maintenance/); release(); await operation; assert.equal(service.maintenanceActive, false);
@@ -71,18 +71,18 @@ test("all new video records use one central folder, Playlist indexes embed Base,
 test("missing view initialization is serialized and preserves customized Bases and the local guide", async () => {
   class File { constructor(path, content) { this.path = path; this.content = content; } }
   const files = new Map(), app = { vault: { getAbstractFileByPath: path => files.get(path), createFolder: async path => { assert(!files.has(path)); files.set(path, {}); }, create: async (path, content) => { assert(!files.has(path)); files.set(path, new File(path, content)); } } };
-  const storage = await moduleAt("src/obsidian-storage.ts", { obsidian: { TFile: File } });
+  const storage = await moduleAt("src/obsidian-storage.ts", { obsidian: { TFile: File, TFolder: class {} } });
   await Promise.all([storage.ensureLibraryViews(app, settings), storage.ensureLibraryViews(app, settings)]);
   const bases = [...files.values()].filter(f => f instanceof File && f.path.endsWith(".base")); assert.equal(bases.length, 3);
-  const guide = files.get("TSNotes/_data/README.md");
+  const guide = files.get("TSNotes/Library/_data/README.md");
   assert(guide.content.includes("this")); assert(guide.content.includes("_data/playlists"));
   assert.equal((guide.content.match(/^```$/gm) || []).length, 6);
   guide.content += "\nPersonal instructions";
   bases[0].content = "user custom Base"; await storage.ensureLibraryViews(app, settings); assert.equal(bases[0].content, "user custom Base");
   assert(guide.content.endsWith("Personal instructions"));
   const customized = lib.libraryGuide({ ...settings, root: "Learning", videos: "Clips", playlists: "Courses" });
-  assert.equal(customized.path, "Learning/_data/README.md");
-  assert(customized.content.includes("![[Learning/Courses/_records/Playlist Videos.base]]"));
+  assert.equal(customized.path, "Learning/Library/_data/README.md");
+  assert(customized.content.includes("![[Learning/Library/Courses/_records/Playlist Videos.base]]"));
   assert(!customized.content.includes("TSNotes/Playlists/"));
 });
 
@@ -91,8 +91,8 @@ test("an unmoved legacy shared Base is preserved and does not get a competing de
   const legacy = new File("TSNotes/_data/views/Playlist Videos.base", "customized old Base");
   const files = new Map([[legacy.path, legacy]]);
   const app = { vault: { getAbstractFileByPath: path => files.get(path), create: async () => { throw Error("unexpected create"); } } };
-  const storage = await moduleAt("src/obsidian-storage.ts", { obsidian: { TFile: File } });
-  await assert.rejects(() => storage.ensureLibraryViews(app, settings), /先在 Obsidian 中.*移动/);
+  const storage = await moduleAt("src/obsidian-storage.ts", { obsidian: { TFile: File, TFolder: class {} } });
+  await assert.rejects(() => storage.ensureLibraryViews(app, settings), /迁移|移动/);
   assert.equal(files.size, 1); assert.equal(legacy.content, "customized old Base");
 });
 
@@ -105,7 +105,7 @@ test("migration requires exact preview and preserves identity, body, relations a
   for (const item of plan.items) { assert.equal(props(f.files.get(item.to)).TSNotesID, item.id); if (item.kind === "video") assert.equal(body(f.files.get(item.to)), body(before.get(item.from))); }
   assert(f.files.has(f.names.external)); assert(f.files.get(f.names.external).includes("Videos/_records/one"));
   assert.equal(f.files.get(f.names.relation), before.get(f.names.relation));
-  assert(f.files.get("TSNotes/Playlists/_records/Course.md").includes("My course description"));
+  assert(f.files.get("TSNotes/Library/Playlists/_records/Course.md").includes("My course description"));
   await migration.rollbackLibraryMigration(journal, f.io); assert.equal(journal.phase, "rolled-back"); assert.deepEqual(f.files, before);
 });
 
@@ -118,7 +118,7 @@ test("preview refuses changed files, unsaved editors, duplicates, damaged relati
   assert(migration.planLibraryMigration(await f.io.scan(), settings).errors.some(e => e.includes("Duplicate")));
   f.files.delete("Other/duplicate.md"); f.files.set(f.names.relation, "{}");
   assert(migration.planLibraryMigration(await f.io.scan(), settings).errors.some(e => e.includes("relationship")));
-  const c = fixture(); c.files.set("TSNotes/Videos/_records/ONE.md", "human file");
+  const c = fixture(); c.files.set("TSNotes/Library/Videos/_records/ONE.md", "human file");
   const plan = migration.planLibraryMigration(await c.io.scan(), settings); assert(plan.items.find(i => i.id === id(1)).to.includes(id(1).slice(0, 8)));
 });
 

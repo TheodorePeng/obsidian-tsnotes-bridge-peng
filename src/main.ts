@@ -1,4 +1,7 @@
 import { ResourceService } from "./resources";
+import {LibraryUpgrade} from "./library-upgrade";
+import {LibraryUpgradeModal} from "./library-upgrade-modal";
+import {PropertyPresentation} from "./property-presentation";
 import { LayoutMigration, legacyViewPath } from "./layout-migration";
 import { RecordPresentation, presentationStore, recordOpenMode } from "./record-presentation";
 import { addPlaybackOpen } from "./playback-open";
@@ -8,7 +11,7 @@ import { homedir } from "node:os";
 import { EditorView } from "@codemirror/view";
 import { linkFromElement, eventElement, captureMarkdown, snapshotInsertion, applyInsertion } from "./link-target";
 import { RecordService } from "./records";
-import { storageFor, ensureLibraryViews } from "./obsidian-storage";
+import { storageFor, ensureLibraryViews, assertLibraryLayout } from "./obsidian-storage";
 import { libraryPaths } from "./library";
 import { LibraryMaintenance } from "./library-maintenance";
 import { MigrationPreviewModal, MigrationRecoveryModal, showViewReview } from "./library-modals";
@@ -34,6 +37,8 @@ const run = promisify(execFile);
 export default class TSNotesBridgePlugin extends Plugin {
   records!: RecordService;
   resources!: ResourceService;
+  upgrade!: LibraryUpgrade;
+  propertyPresentation!: PropertyPresentation;
   layoutMigration!: LayoutMigration;
   presentation!: RecordPresentation;
   maintenance!: LibraryMaintenance;
@@ -58,6 +63,7 @@ export default class TSNotesBridgePlugin extends Plugin {
     const saved = await this.loadData();
     this.settings = { ...defaults, ...saved, fields: saved?.fields || {} };
     this.settings.recordOpenMode = recordOpenMode(saved?.recordOpenMode);
+    this.settings.compactProperties = saved?.compactProperties !== false;
     const local = await loadLocalState(
       this.app.vault.adapter.getBasePath(),
       this.settings.vaultId,
@@ -77,6 +83,16 @@ export default class TSNotesBridgePlugin extends Plugin {
     this.registerEvent(this.app.workspace.on("window-close", () => this.presentation.layoutChanged()));
     this.records = new RecordService(storageFor(this.app, this.presentation), () => this.settings);
     this.resources = new ResourceService(this.app, this.records, () => this.settings, this.local.vaultId);
+    this.upgrade = new LibraryUpgrade(this.app, this.records, this.resources, () => this.settings, this.local.vaultId);
+    await this.upgrade.initialize();
+    this.register(() => this.upgrade.dispose());
+    this.propertyPresentation = new PropertyPresentation(this.app, () => this.settings);
+    this.register(() => this.propertyPresentation.dispose());
+    this.registerEvent(this.app.workspace.on("layout-change", () => this.propertyPresentation.schedule()));
+    this.registerEvent(this.app.workspace.on("active-leaf-change", () => this.propertyPresentation.schedule()));
+    this.registerEvent(this.app.workspace.on("file-open", () => this.propertyPresentation.schedule()));
+    this.registerMarkdownPostProcessor(() => this.propertyPresentation.schedule());
+    this.app.workspace.onLayoutReady(() => this.propertyPresentation.refresh());
     this.layoutMigration = new LayoutMigration(this.app, this.records, () => this.settings, this.local.vaultId);
     this.register(() => this.resources.dispose());
     this.maintenance = new LibraryMaintenance(this.app, this.records, () => this.settings, this.local.vaultId, `${this.app.vault.configDir}/plugins/${this.manifest.id}/data.json`);
@@ -105,7 +121,7 @@ export default class TSNotesBridgePlugin extends Plugin {
     this.app.workspace.onLayoutReady(initialize);
     this.registerEvent(this.app.metadataCache.on("resolved", initialize));
     this.registerEvent(
-      this.app.metadataCache.on("changed", (file) => index(file)),
+      this.app.metadataCache.on("changed", (file) => {index(file); this.propertyPresentation.schedule();}),
     );
     this.registerEvent(
       this.app.vault.on("rename", (file, old) => {
@@ -137,6 +153,7 @@ export default class TSNotesBridgePlugin extends Plugin {
           resolve();
         });
       });
+      if (r.action === "ensure" || r.action === "refresh" || r.action.startsWith("resource-")) {this.upgrade.assertReady(); assertLibraryLayout(this.app, this.settings);}
       if (r.action.startsWith("resource-")) return this.resources.handle(r.action, r.payload);
       if (r.action === "ensure")
         return this.records.ensure(r.payload.record, r.payload.open !== false);
@@ -171,14 +188,16 @@ export default class TSNotesBridgePlugin extends Plugin {
       if (this.launchTimer) clearInterval(this.launchTimer);
     });
     this.addSettingTab(new BridgeSettingTab(this));
-    this.addCommand({id:"preview-library-layout",name:"Preview library entry layout migration",callback:()=>{void this.previewLayout();}});
+    this.addCommand({id:"preview-library-layout",name:"Preview library layout migration",callback:()=>{void this.previewLibraryUpgrade();}});
     this.addCommand({id:"show-playback-results",name:"Show recent playback results",callback:()=>this.showPlaybackResults()});
     this.addCommand({id:"reconnect-videoplay",name:"Reconnect VideoPlay",callback:()=>{void this.reconnectPlayback().catch(()=>new Notice("请打开目标浏览器的 TSNotes 配对页重新连接"));}});
     this.addCommand({ id: "open-video-library", name: "Open video library", callback: () => { void this.openLibrary("videos"); } });
     this.addCommand({ id: "open-playlist-library", name: "Open playlist library", callback: () => { void this.openLibrary("playlists"); } });
-    this.addCommand({ id: "preview-library-migration", name: "Preview video library migration", callback: () => { void this.previewMigration(); } });
-    this.addCommand({ id: "resume-library-migration", name: "Resume video library migration", callback: () => { void this.recoverMigration("resume"); } });
-    this.addCommand({ id: "rollback-library-migration", name: "Roll back video library migration", callback: () => { void this.recoverMigration("rollback"); } });
+    this.addCommand({ id: "preview-library-migration", name: "Preview Library and property migration", callback: () => { void this.previewLibraryUpgrade(); } });
+    this.addCommand({ id: "resume-library-migration", name: "Resume Library migration", callback: () => { void this.recoverLibraryUpgrade("resume"); } });
+    this.addCommand({ id: "rollback-library-migration", name: "Roll back Library migration", callback: () => { void this.recoverLibraryUpgrade("rollback"); } });
+    this.addCommand({id: "toggle-technical-properties", name: "Toggle technical properties for current note", callback: () => {if (!this.propertyPresentation.toggleCurrent()) new Notice("请先打开一篇 TSNotes 记录或资源笔记");}});
+    this.addCommand({id: "open-library-guide", name: "Open TSNotes library guide", callback: () => {void this.openLibraryGuide();}});
     this.addCommand({ id: "review-library-views", name: "Review library views", callback: () => { void showViewReview(this.app, this.maintenance).catch(e => new Notice("TSNotes: " + e.message)); } });
     this.addCommand({
       id: "copy-pairing",
@@ -254,6 +273,23 @@ export default class TSNotesBridgePlugin extends Plugin {
   async previewMigration(): Promise<void> {
     try { await this.indexReady; const plan = await this.maintenance.preview(), report = await this.maintenance.exportPreview(plan); new MigrationPreviewModal(this.app, this.maintenance, plan, report).open(); }
     catch (e) { new Notice("TSNotes: " + (e instanceof Error ? e.message : String(e)), 10000); }
+  }
+  async previewLibraryUpgrade(): Promise<void> {
+    try {await this.indexReady; const plan = await this.upgrade.preview(), report = await this.upgrade.exportPreview(plan); new LibraryUpgradeModal(this.app, this.upgrade, plan, report).open();}
+    catch (error) {new Notice("迁移预览失败：" + (error instanceof Error ? error.message : String(error)), 10000);}
+  }
+  async recoverLibraryUpgrade(mode: "resume" | "rollback"): Promise<void> {
+    try {
+      const journal = await this.upgrade.latest(), modal = new Modal(this.app);
+      modal.titleEl.setText(mode === "resume" ? "恢复 Library 迁移" : "回滚 Library 迁移");
+      modal.contentEl.createEl("p", {text: `任务 ${journal.id} · ${journal.phase}。文件已变化或存在新编辑时会停止。`});
+      new Setting(modal.contentEl).addButton(button => button.setButtonText("确认" + (mode === "resume" ? "恢复" : "回滚")).onClick(async () => {button.setDisabled(true); try {await this.upgrade[mode](); new Notice("操作完成"); modal.close();} catch (error) {new Notice("操作停止：" + String(error), 10000);}})); modal.open();
+    } catch (error) {new Notice("恢复信息不可用：" + String(error), 10000);}
+  }
+  async openLibraryGuide(): Promise<void> {
+    const path = libraryPaths(this.settings).readme, old = `${this.settings.root}/_data/README.md`;
+    const file = this.app.vault.getAbstractFileByPath(path) || this.app.vault.getAbstractFileByPath(old);
+    if (file instanceof TFile) await this.app.workspace.getLeaf("tab").openFile(file);
   }
   async recoverMigration(mode: "resume" | "rollback"): Promise<void> {
     try { await this.indexReady; new MigrationRecoveryModal(this.app, this.maintenance, await this.maintenance.latest(), mode).open(); }
@@ -445,10 +481,17 @@ class BridgeSettingTab extends PluginSettingTab {
             }
           }),
         );
-    new Setting(containerEl).setName("视频库视图").setDesc("新视频统一进入视频库下的 _records；Playlist 索引使用共享 Base。已有文件不会自动移动。")
+    new Setting(containerEl).setName("简洁属性显示").setDesc("只在 TSNotes 管理笔记中隐藏技术字段；源码和临时显示命令可查看完整信息，不影响其他笔记。")
+      .addToggle(toggle => toggle.setValue(this.plugin.settings.compactProperties !== false).onChange(async value => {
+        const old = this.plugin.settings.compactProperties; this.plugin.settings.compactProperties = value;
+        try {await this.plugin.saveData(this.plugin.settings); this.plugin.propertyPresentation.refresh();}
+        catch {this.plugin.settings.compactProperties = old; toggle.setValue(old !== false); new Notice("设置保存失败");}
+      }));
+    new Setting(containerEl).setName("视频库视图").setDesc("总览留在根目录；视频、Playlist、Resources 与 _data 位于 Library 内。旧资料须先预览确认迁移。")
       .addButton(b => b.setButtonText("视频总览").onClick(() => this.plugin.openLibrary("videos")))
       .addButton(b => b.setButtonText("Playlist 总览").onClick(() => this.plugin.openLibrary("playlists")))
-      .addButton(b => b.setButtonText("迁移预览").onClick(() => this.plugin.previewMigration()))
+      .addButton(b => b.setButtonText("迁移预览").onClick(() => this.plugin.previewLibraryUpgrade()))
+      .addButton(b => b.setButtonText("使用说明").onClick(() => this.plugin.openLibraryGuide()))
       .addButton(b => b.setButtonText("检查视图模板").onClick(() => { void showViewReview(this.app, this.plugin.maintenance); }));
     new Setting(containerEl).setName("播放与连接诊断").addButton(b=>b.setButtonText("最近播放结果").onClick(()=>this.plugin.showPlaybackResults())).addButton(b=>b.setButtonText("重新连接").onClick(()=>{void this.plugin.reconnectPlayback().catch(()=>new Notice("请在浏览器 TSNotes 配对页重连"));}));
     containerEl.createEl("h3", { text: "Properties" });

@@ -1,17 +1,22 @@
 import { safePath, registry, type BridgeSettings } from "./model";
 import { libraryGuideContent } from "./library-guide";
 
-export const LIBRARY_VERSION = 3;
+export const LIBRARY_VERSION = 4;
 export function libraryPaths(settings: BridgeSettings) {
   const root = safePath(settings.root);
+  const storageRoot = safePath(`${root}/Library`);
   return {
     root,
-    videos: safePath(`${root}/${settings.videos}/_records`),
-    playlists: safePath(`${root}/${settings.playlists}/_records`),
+    storageRoot,
+    videos: safePath(`${storageRoot}/${settings.videos}/_records`),
+    playlists: safePath(`${storageRoot}/${settings.playlists}/_records`),
+    resources: safePath(`${storageRoot}/Resources`),
+    data: safePath(`${storageRoot}/_data`),
+    relations: safePath(`${storageRoot}/_data/playlists`),
     videoBase: safePath(`${root}/Videos.base`),
     playlistBase: safePath(`${root}/Playlists.base`),
-    membersBase: safePath(`${root}/${settings.playlists}/_records/Playlist Videos.base`),
-    readme: safePath(`${root}/_data/README.md`),
+    membersBase: safePath(`${storageRoot}/${settings.playlists}/_records/Playlist Videos.base`),
+    readme: safePath(`${storageRoot}/_data/README.md`),
   };
 }
 
@@ -39,9 +44,10 @@ export function libraryViews(settings: BridgeSettings): LibraryView[] {
     return name === original ? prop : `if(${prop}, ${prop}, note[${JSON.stringify(original)}])`;
   };
   const formulas = {
-    Title: `file.asLink(if(${field("title")}, ${field("title")}, file.name))`,
+    Title: "file.asLink(file.basename)",
     Creator: field("channel"),
     Duration: field("durationText"),
+    DurationSeconds: durationFormula(field("durationText")),
     Play: `if(${field("urlTsnotes")}, link(${field("urlTsnotes")}, icon("play")), "")`,
     Cover: `if(${field("coverUrl")}, ${field("coverUrl")}, "")`,
   };
@@ -80,4 +86,13 @@ export function libraryViews(settings: BridgeSettings): LibraryView[] {
       views: [{ type: "table", name: "Playlist videos", order: ["formula.Sequence", ...columns.filter(p => p !== "note.Playlists")], sort: [{ property: "formula.Sequence", direction: "ASC" }] }],
     }),
   ];
+}
+
+// Computed only by Bases, never persisted in frontmatter. The first component
+// of MM:SS is total minutes; HH:MM:SS limits minutes and seconds to 00..59.
+export function durationFormula(value: string): string {
+  const s = `(${value}).toString().trim()`;
+  const n = (index: number) => `number(${s}.split(":")[${index}])`;
+  const safe = (expression: string) => `if((${expression}) <= 9007199254740991, ${expression}, null)`;
+  return `if(${value} == null, null, if(/^\\d+:[0-5]\\d$/.matches(${s}), ${safe(`${n(0)} * 60 + ${n(1)}`)}, if(/^\\d+:[0-5]\\d:[0-5]\\d$/.matches(${s}), ${safe(`${n(0)} * 3600 + ${n(1)} * 60 + ${n(2)}`)}, null)))`;
 }

@@ -1,3 +1,4 @@
+import {formatDuration} from "./duration";
 export type Fields = Record<string, unknown>;
 export interface Prepared {
   site: "youtube" | "bilibili" | "baidupan";
@@ -14,6 +15,7 @@ export interface FieldRule {
 }
 export interface BridgeSettings {
   recordOpenMode: "window" | "tab";
+  compactProperties?: boolean;
   vaultId?: string;
   root: string;
   videos: string;
@@ -22,19 +24,13 @@ export interface BridgeSettings {
 }
 export const defaults: BridgeSettings = {
   recordOpenMode: "window",
+  compactProperties: true,
   root: "TSNotes",
   videos: "Videos",
   playlists: "Playlists",
   fields: {},
 };
 export const registry: Record<string, FieldRule> = {
-  title: {
-    name: "Title",
-    type: "text",
-    enabled: true,
-    refresh: true,
-    records: "all",
-  },
   channel: {
     name: "Creator",
     type: "text",
@@ -45,13 +41,6 @@ export const registry: Record<string, FieldRule> = {
   durationText: {
     name: "Duration",
     type: "text",
-    enabled: true,
-    refresh: true,
-    records: "video",
-  },
-  durationSec: {
-    name: "Duration Seconds",
-    type: "number",
     enabled: true,
     refresh: true,
     records: "video",
@@ -225,7 +214,6 @@ export function technical(p: Prepared): Fields {
     objectKey: "Object Key",
     fileMd5: "File MD5",
     filePath: "File Path",
-    parentPath: "Parent Path",
   };
   for (const [key, name] of Object.entries(mapping))
     if (text(f[key])) out[name] = text(f[key]);
@@ -279,6 +267,7 @@ export function mapped(
       continue;
     if (
       !rule.name.trim() ||
+      ["title", "duration seconds", "parent path"].includes(rule.name.trim().toLowerCase()) ||
       reserved.has(rule.name) ||
       rule.name === "__proto__" ||
       rule.name === "constructor"
@@ -286,7 +275,7 @@ export function mapped(
       throw Error("reserved_property_name");
     if (names.has(rule.name)) throw Error("duplicate_property_mapping");
     names.add(rule.name);
-    const value = f[key];
+    const value = key === "durationText" && (f[key] == null || f[key] === "") ? formatDuration(f.durationSec) : f[key];
     if (value == null || value === "") continue;
     if (rule.type === "number") {
       const n = Number(value);

@@ -1,4 +1,4 @@
-import { App, TFile, parseYaml, stringifyYaml } from "obsidian";
+import { App, TFile, TFolder, parseYaml, stringifyYaml } from "obsidian";
 import { safePath, type Fields, type BridgeSettings } from "./model";
 import { libraryGuide, libraryPaths, libraryViews } from "./library";
 import { legacyViewPath } from "./layout-migration";
@@ -83,6 +83,14 @@ export function storageFor(app: App, presentation: { open(file: TFile): Promise<
 }
 
 const initializingViews = new WeakMap<App, Promise<void>>();
+export function legacyLibraryFolders(settings: BridgeSettings): string[] {
+  return [...new Set([settings.videos, settings.playlists, "Resources", "_data"])].map(name => safePath(`${settings.root}/${name}`));
+}
+export function assertLibraryLayout(app: App, settings: BridgeSettings): void {
+  const hasFiles = (file: unknown): boolean => file instanceof TFile || file instanceof TFolder && file.children.some(hasFiles);
+  if (legacyLibraryFolders(settings).some(path => hasFiles(app.vault.getAbstractFileByPath(path))))
+    throw Error("library_layout_migration_required：请先预览并确认 Library 目录及属性迁移");
+}
 export async function ensureLibraryViews(app: App, settings: BridgeSettings): Promise<void> {
   const previous = initializingViews.get(app) || Promise.resolve();
   const task = previous.catch(() => undefined).then(() => createMissingViews(app, settings));
@@ -90,6 +98,7 @@ export async function ensureLibraryViews(app: App, settings: BridgeSettings): Pr
   try { await task; } finally { if (initializingViews.get(app) === task) initializingViews.delete(app); }
 }
 async function createMissingViews(app: App, settings: BridgeSettings): Promise<void> {
+  assertLibraryLayout(app, settings);
   const paths = libraryPaths(settings);
   if (!app.vault.getAbstractFileByPath(paths.membersBase) && app.vault.getAbstractFileByPath(`${paths.root}/_data/views/Playlist Videos.base`))
     throw Error(`请先在 Obsidian 中将旧共享 Base 移动到 ${paths.membersBase}，以保留已有视图设置及引用。`);

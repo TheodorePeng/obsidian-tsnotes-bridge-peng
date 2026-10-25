@@ -5,6 +5,8 @@ import {join} from "node:path";
 import {homedir} from "node:os";
 import {safePath,fileName,type BridgeSettings,type Fields} from "./model";
 import type {RecordService} from "./records";
+import {libraryPaths} from "./library";
+import {assertLibraryLayout} from "./obsidian-storage";
 import {ResourceIndex,type ResourceEntry} from "./resource-index";
 
 const hash=(value:string|Buffer)=>createHash("sha256").update(value).digest("hex");
@@ -18,11 +20,22 @@ export function splitResource(raw:string):{props:Fields;body:string}{
 }
 export class ResourceService {
   readonly index=new ResourceIndex();
-  private tail:Promise<unknown>=Promise.resolve();private active=true;
+  private tail:Promise<unknown>=Promise.resolve();private active=true;private paused=false;
   private readonly local:string;
   constructor(private app:App,private records:RecordService,private settings:()=>BridgeSettings,vaultId:string,localRoot?:string){if(!uuid(vaultId))throw Error("invalid_vault_id");this.local=localRoot||join(homedir(),"Library","Application Support","TSNotes Bridge Peng","resource-imports",vaultId);}
   dispose(){this.active=false;}
-  private assertActive(){if(!this.active)throw Error("plugin_unloaded");if(this.records.maintenanceActive)throw Error("library_maintenance_in_progress");}
+  private assertActive(){if(!this.active)throw Error("plugin_unloaded");if(this.paused||this.records.maintenanceActive)throw Error("library_maintenance_in_progress");}
+  async beginMaintenance():Promise<()=>void>{
+    if(this.paused)throw Error("resource_maintenance_in_progress");this.paused=true;
+    try{
+      await this.tail.catch(()=>undefined);
+      for(const name of await readdir(this.local).catch(()=>[]))if(uuid(name)){
+        const upload=JSON.parse(await readFile(join(this.uploadDir(name),"upload.json"),"utf8").catch(()=>"null")) as Upload|null;
+        if(upload&&!upload.committed&&upload.expires>Date.now())throw Error("active_resource_upload：请先完成或取消资源导入");
+      }
+      return ()=>{this.paused=false;};
+    }catch(error){this.paused=false;throw error;}
+  }
   private parent(id:unknown){if(!uuid(id))throw Error("invalid_document_id");const parent=this.records.index.byId(id);if(!parent||parent.props["Record Type"]!=="video")throw Error("video_record_missing");return parent;}
   private async directory(path:string){let current="";for(const piece of safePath(path).split("/")){current=current?current+"/"+piece:piece;const f=this.app.vault.getAbstractFileByPath(current);if(f&&!(f instanceof TFolder))throw Error("resource_directory_conflict");if(!f)await this.app.vault.createFolder(current);}}
   private file(path:string){const f=this.app.vault.getAbstractFileByPath(safePath(path));if(!(f instanceof TFile))throw Error("resource_document_missing");return f;}
@@ -51,6 +64,7 @@ export class ResourceService {
     await this.app.fileManager.processFrontMatter(resourceFile,props=>{if(props.ResourceID!==entry.props.ResourceID)throw Error("resource_identity_changed");props.Video="[["+parent.path.replace(/\.md$/,"")+"]]";});
   }
   async renamed(oldPath:string,newPath:string){
+    if(this.records.maintenanceActive)return;
     for(const entry of [...this.index.entries.values()]){
       const parent=this.records.index.byId(String(entry.props["TSNotes Parent ID"]));if(!parent||(entry.path!==newPath&&parent.path!==newPath))continue;
       const field=entry.props["Resource Type"]==="subtitle"?"Subtitles":"AI Notes";
@@ -61,12 +75,13 @@ export class ResourceService {
   }
   async handle(action:string,p:Record<string,unknown>):Promise<unknown>{const next=this.tail.catch(()=>undefined).then(()=>{this.assertActive();return this.execute(action,p);});this.tail=next;return next;}
   private async execute(action:string,p:Record<string,unknown>):Promise<unknown>{
+    assertLibraryLayout(this.app,this.settings());
     const clientId=String(p.importClientId||"");if(!/^[a-p]{32}$/.test(clientId))throw Error("invalid_import_client");
     if(action==="resource-query"||action==="resource-begin"){
       const parent=this.parent(p.documentId);await this.records.index.byId(String(parent.props.TSNotesID));
       const kind=String(p.kind),language=kind==="subtitle"?String(p.language||"und").trim().toLowerCase():"und";
       if(!["subtitle","ai-notes"].includes(kind)||!/^[a-z0-9-]{1,40}$/.test(language))throw Error("invalid_resource_kind_or_language");
-      const folder=safePath(`${this.settings().root}/Resources/${parent.props.TSNotesID}`),existing=this.index.find(String(parent.props.TSNotesID),kind,language);
+      const folder=safePath(`${libraryPaths(this.settings()).resources}/${parent.props.TSNotesID}`),existing=this.index.find(String(parent.props.TSNotesID),kind,language);
       if(action==="resource-query")return {exists:!!existing,path:existing?.path,resourceId:existing?.props.ResourceID,folder};
       if(existing&&p.update!==true){await this.link(existing);return {skipped:true,path:existing.path};}
       let before:string|null=null;if(existing){before=await this.noDraft(this.file(existing.path));const parsed=splitResource(before);if(parsed.props.ResourceID!==existing.props.ResourceID)throw Error("resource_identity_changed");if(hash(parsed.body)!==parsed.props["Imported Body Hash"])throw Error("resource_body_locally_modified");}

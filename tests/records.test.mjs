@@ -90,7 +90,7 @@ test("one main note across playlists, move, duplicate preserves body and propert
   f.files.get(path).props.Status = "Learning";
   v.record.fields.title = "Changed";
   await f.service.ensure(v);
-  assert.equal(f.files.get(path).props.Title, "Video");
+  assert.equal(f.files.get(path).props.Title, undefined);
   assert.equal(f.files.get(path).body, "Human body");
   await f.service.ensure(video(undefined, "one"));
   await f.service.ensure(video(undefined, "two"));
@@ -109,11 +109,15 @@ test("one main note across playlists, move, duplicate preserves body and propert
     props: structuredClone(old.props),
   });
   assert.equal((await f.service.ensure(v)).path, "Moved/Renamed.md");
+  v.record.fields.durationSec = 35;
   const preview = await f.service.refresh(v);
-  assert.equal(preview.changes.Title, "Changed");
-  assert.equal(old.props.Title, "Video");
+  assert.equal(preview.changes.Duration, "00:35");
+  assert.equal(preview.changes.Title, undefined);
+  assert.equal(old.props.Title, undefined);
+  assert.equal(old.props.Duration, "00:20");
   await f.service.refresh(v, true, preview);
-  assert.equal(old.props.Title, "Changed");
+  assert.equal(old.props.Title, undefined);
+  assert.equal(old.props.Duration, "00:35");
   assert.equal(old.props.Status, "Learning");
   assert.equal(old.body, "Human body");
   assert.equal(old.props.TSNotesID, first.documentId);
@@ -129,6 +133,17 @@ test("concurrent duplicate requests serialize and duplicate UUID fails closed", 
   f.service.index.set({ path: "Copy.md", props: structuredClone(file.props) });
   await assert.rejects(f.service.ensure(video()), /duplicate_uuid/);
   assert.equal(f.files.size, 1);
+});
+test("repeat save projects playlist links by ID after native link shortening", async () => {
+  const f = fixture(), value = video(undefined, "one");
+  const first = await f.service.ensure(value), entry = f.files.get(first.path);
+  entry.props.Playlists = ["[[Playlist]]"];
+  f.service.index.set({path: first.path, props: structuredClone(entry.props)});
+  await f.service.ensure(value);
+  assert.equal(entry.props.Playlists.length, 1);
+  assert(entry.props.Playlists[0].includes("TSNotes/Library/Playlists/_records/Playlist"));
+  assert.equal(entry.props["Playlist IDs"].length, 1);
+  await f.service.ensure(value); assert.equal(entry.props.Playlists.length, 1);
 });
 test("Bilibili parts remain separate; weak URL cannot merge different CID", async () => {
   const f = fixture();
@@ -210,8 +225,9 @@ test("refresh requires the same previewed identity and exact field changes", asy
   await f.service.ensure(video());
   const v = video();
   v.record.fields.title = "new";
+  v.record.fields.durationSec = 35;
   const preview = await f.service.refresh(v);
-  v.record.fields.title = "newer";
+  v.record.fields.durationSec = 36;
   await assert.rejects(f.service.refresh(v, true, preview), /preview_changed/);
 });
 

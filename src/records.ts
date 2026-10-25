@@ -207,7 +207,7 @@ export class RecordService {
       if (this.maintenanceActive) throw Error("library_maintenance_in_progress");
       const p = validatePrepared(value),
         settings = this.settings(),
-        root = safePath(settings.root);
+        root = libraryPaths(settings).storageRoot;
       await this.storage.ensureLibrary?.(settings);
       let entry = this.index.find(p),
         created = false,
@@ -376,12 +376,13 @@ export class RecordService {
           text(parent.props.TSNotesID),
         ]),
       ];
-      props.Playlists = [
-        ...new Set([
-          ...array(props.Playlists),
-          "[[" + parent.path.replace(/\.md$/, "") + "]]",
-        ]),
-      ];
+      // Native folder renames can shorten a wikilink. Rebuild this controlled
+      // projection from stable IDs rather than merging different spellings of
+      // the same playlist and creating a duplicate on the next save.
+      props.Playlists = array(props["Playlist IDs"])
+        .map(id => this.index.byId(id))
+        .filter((entry): entry is Entry => !!entry)
+        .map(entry => "[[" + entry.path.replace(/\.md$/, "") + "]]");
     });
   }
   async reconcileLinks(): Promise<void> {
