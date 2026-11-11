@@ -1,14 +1,29 @@
 # TSNotes × Obsidian
 
-版本：浏览器扩展 0.8.14 / TSNotes Bridge Peng 0.1.15 / 桥接能力 1.2（HTTP 兼容 1.0，资源导入 resource-import-v1）。桌面 macOS；首轮验收环境 ego lite。
+版本：浏览器扩展 0.8.14 / TSNotes Bridge Peng 0.1.16 / 桥接能力 1.2（HTTP 兼容 1.0，资源导入 resource-import-v1）。桌面 macOS；首轮验收环境 ego lite。
 
 ## 安装和配对
 
-1. 构建独立插件仓库，复制 `main.js` 与 `manifest.json` 到目标 Vault 的 `.obsidian/plugins/tsnotes-bridge-peng/`，启用 TSNotes Bridge Peng。
-2. 在 Obsidian 插件设置中选择启动浏览器，点击“复制配对信息”。
-3. 在 TSNotes 弹出页点击“配对 Obsidian Vault”，粘贴并配对。不要公开或分享这段信息。
-4. 在目标浏览器打开 VideoPlay；在 Obsidian 设置选择该浏览器，再选择与配对页面短标识一致的在线客户端，点击保存绑定。每个 Vault 独立设置；更换扩展实例需要重新绑定，不自动改用其他客户端。
-5. 在弹出页选择 Obsidian 和目标 Vault。默认仍为 Notion，直到主动切换。所有站点按钮会更新保存目标。
+### 通过 BRAT 安装与更新（推荐）
+
+1. 在 Obsidian 社区插件中安装 **BRAT**（`obsidian42-brat`）。
+2. 打开 BRAT 设置，选择 **Add Beta plugin**。
+3. 仓库地址填写 `https://github.com/TheodorePeng/obsidian-tsnotes-bridge-peng`，也接受 `TheodorePeng/obsidian-tsnotes-bridge-peng`。
+4. 确认后启用 **TSNotes Bridge Peng**。此后每次发布新的 GitHub Release，在 BRAT 中执行更新动作即可。
+5. 一键入口（可选）：`obsidian://brat?plugin=TheodorePeng/obsidian-tsnotes-bridge-peng`，只会打开 BRAT 的确认弹窗，不会静默安装。
+
+> 仅桌面端（`isDesktopOnly: true`），需要 Obsidian 1.8.0 或更高版本。分发源是该 Release 的 `main.js` 与 `manifest.json`。BRAT 的行为可能变化，请以 [官方仓库](https://github.com/TfTHacker/obsidian42-brat) 与 [developer guide](https://tfthacker.com/brat-developers) 为准。
+
+### 手动安装（无 BRAT）
+
+1. 复制已发布 Release 中的 `main.js` 与 `manifest.json` 到目标 Vault 的 `.obsidian/plugins/tsnotes-bridge-peng/`，启用 TSNotes Bridge Peng。也可以从源码构建：`npm ci && npm run build`。
+
+### 配对
+
+1. 在 Obsidian 插件设置中选择启动浏览器，点击“复制配对信息”。
+2. 在 TSNotes 弹出页点击“配对 Obsidian Vault”，粘贴并配对。不要公开或分享这段信息。
+3. 在目标浏览器打开 VideoPlay；在 Obsidian 设置选择该浏览器，再选择与配对页面短标识一致的在线客户端，点击保存绑定。每个 Vault 独立设置；更换扩展实例需要重新绑定，不自动改用其他客户端。
+4. 在弹出页选择 Obsidian 和目标 Vault。默认仍为 Notion，直到主动切换。所有站点按钮会更新保存目标。
 
 每个 Vault 独立配对，最多 8 个。配对页可以关闭联动，立即释放连接与重试定时器。目标 Vault 必须打开；连接失败不会转存其他 Vault 或 Notion。更换 Profile 或浏览器后重新配对。机器端口和密钥保存在用户 Application Support 的 TSNotes Bridge Peng 目录，扩展副本单独保存在本地 storage；不进入 Vault、配置导出或 Git。
 
@@ -77,7 +92,7 @@ Properties、阅读视图、实时预览与弹出窗口中的 TSNotes 链接由�
 
 保留关系 JSON、笔记 YAML 和两端配对设置。重复 UUID 或 YAML 错误先修复来源文件，不通过重建笔记绕过。创建成功但打开失败可直接再次定位，不需要重建。
 
-两端保留 `main` 与 `codex/obsidian-integration`，原基线可从 Git 历史恢复。用户已要求缩减长时间和极端测试，交付以源码检查和核心真实链路验收为准；未覆盖项目见验收记录。部署脚本备份原运行产物并保留 data.json；回滚恢复明确版本的构建产物，再原生 Reload 扩展、定向 Reload Obsidian 插件。不删除笔记、关系数据或用户设置。不包含 push、Release、BRAT 或商店发布。
+两端保留 `main` 与 `codex/obsidian-integration`，原基线可从 Git 历史恢复。用户已要求缩减长时间和极端测试，交付以源码检查和核心真实链路验收为准；未覆盖项目见验收记录。部署脚本备份原运行产物并保留 data.json；回滚恢复明确版本的构建产物，再原生 Reload 扩展、定向 Reload Obsidian 插件。不删除笔记、关系数据或用户设置。回滚到已发布版本时，用该版本 GitHub Release 中的 `main.js` 与 `manifest.json` 覆盖本地插件目录，或由 BRAT 重装该版本；Release tag 与 `manifest.json` 版本一致。
 
 ## 视频页面保存目标菜单（0.8.12）
 
@@ -142,3 +157,17 @@ YouTube、Bilibili 和百度网盘的保存入口采用分区按钮：`保存图
 库入口调整为 v3：`Videos.base` 和 `Playlists.base` 移到 TSNotes 根目录，使用说明移到 `_data/README.md`；视频与 Playlist 主记录、`_data/playlists` 关系 JSON 不动。迁移通过命令 **Preview library entry layout migration** 预览后确认，只移动上述三份文件，原生 rename 更新链接，README 保留原文并追加标记的 v3 说明。迁移日志和备份保存在本机 Application Support，不随 Vault 同步。迁移完成前，打开总览回退到旧位置，更新默认视图会被拒绝。
 
 详细说明见 [资源导入与库布局](docs/resource-import.md) 与 [验收记录](docs/resource-acceptance-20261023.md)。
+
+## Library v4 与精简属性（0.1.16）
+
+TSNotes 根目录只保留 `Videos.base`、`Playlists.base` 和 `Library`。`Videos/_records`、`Playlists/_records`、`Resources`、`_data` 集中到 `Library/` 下，使用说明位于 `Library/_data`；Playlist Videos.base 仍在 Playlist 索引旁。本节路径取代上节描述的 v3 布局。
+
+视频与 Playlist 仍由 TSNotesID、来源身份和查重字段定位，资源由 ResourceID、TSNotes Parent ID、资源类型和语言定位；移动不改变身份，总览按身份筛选而不是按文件夹限定范围。`Library/_data/playlists` 是正式成员关系数据，必须随 Vault 备份，不能当缓存删除。
+
+受管属性精简：不再写入 `Title`、`Duration Seconds`、`Parent Path`，文件名作为标题；`Duration` 保存为 `MM:SS` 或 `HH:MM:SS`；所有 ID 保持文本，避免精度损失。简洁属性显示默认开启，只隐藏有效 TSNotes 记录与资源笔记中的技术字段；命令 **Toggle technical properties for current note** 临时显示当前视图的完整属性。属性类型需在 Obsidian 原生属性界面设置，插件不调用私有类型管理器。
+
+迁移不自动执行。命令 **Preview Library and property migration** 或设置中的迁移预览生成完整本机清单，列出路径、校验值、属性原值、外部引用、类型冲突与备份范围；只有确认同一摘要且文件未变化才执行。**Resume Library migration** 从已确认步骤继续，**Roll back Library migration** 在确认后恢复目录与原始内容；遇到后续修改、目标冲突、损坏备份或新引用会停止，不覆盖新内容。目录移动使用 Obsidian 原生文件管理接口，内链由 Obsidian 更新。
+
+备份与日志保存在本机 Application Support 的 `TSNotes Bridge Peng/library-v4/<Vault UUID>/`，不随 Vault 同步。迁移不修改播放协议、Notion 保存、字幕采集、时间链接命令或专用窗口复用。
+
+详细说明见 [Library v4 与精简属性](docs/library-v4.md) 与 [验收记录](docs/library-v4-acceptance-20261023.md)。
