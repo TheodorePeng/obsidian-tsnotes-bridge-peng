@@ -16,7 +16,9 @@ HTTP `POST http://127.0.0.1:<device-port>/v1`；`Authorization: Bearer <device-s
 | open | documentId | 按 UUID 打开已有笔记 |
 | consume-launch | ticket, url | 校验并消费 30 秒单次票据，必须匹配原 URL |
 | launch-result | ticket, url, success, reason | 只接受已消费且未过期票据的单次定位回执；Obsidian 区分连接成功与定位失败 |
-| status | 空对象 | 当前 Vault 身份及 VideoPlay 连接状态 |
+| status | 空对象 | 当前 Vault 身份、VideoPlay 连接状态及记录索引状态 |
+
+`status.result.metadataIndexReady` 表示 TSNotes 记录索引是否已初始化。旧版可能省略此字段，写入仍会等待索引。
 
 record 使用三站现有 resolveAndPrepare 的输出，含 site、mode、record.dedupeKey、record.fields、可选 parent.dedupeKey/fields。辅助适配器字段允许缺省，不制造空属性。
 

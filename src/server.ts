@@ -35,6 +35,7 @@ export class BridgeServer {
     readonly local: LocalState,
     private saveLocal: () => Promise<void>,
     private action: (request: RequestEnvelope) => Promise<unknown>,
+    private metadataIndexReady: () => boolean = () => false,
   ) {
     this.playback = new PlaybackOperations(()=>this.sessions.targetKey());
     this.sessions = new ClientSessions(local, () => { this.diagnostics.heartbeats++; });
@@ -153,7 +154,7 @@ export class BridgeServer {
   }
   private async execute(r: RequestEnvelope): Promise<unknown> {
     if (r.action === "status")
-      return { vaultId: this.local.vaultId, connected: this.connected, protocolVersion: "1.2", capabilities:["resource-import-v1"] };
+      return { vaultId: this.local.vaultId, connected: this.connected, metadataIndexReady: this.metadataIndexReady(), protocolVersion: "1.2", capabilities:["resource-import-v1"] };
     if(r.action==="report-playback")return this.playback.report(r.payload);
     if (r.action === "consume-launch") {
       const ticket = String(r.payload.ticket || ""),

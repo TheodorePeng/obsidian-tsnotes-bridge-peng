@@ -27,10 +27,12 @@ test("loopback authentication, single-use tickets, idempotency and shutdown", as
     browserBindings:{"com.citrolabs.ego.lite":"11111111-1111-4111-8111-111111111111"},
   };
   let writes = 0;
+  let metadataIndexReady = false;
   const bridge = new BridgeServer(
     state,
     async () => {},
     async () => ({ writes: ++writes }),
+    () => metadataIndexReady,
   );
   await bridge.start();
   const send = async (
@@ -57,6 +59,12 @@ test("loopback authentication, single-use tickets, idempotency and shutdown", as
   };
   try {
     assert.equal((await send("status", {}, undefined, false)).status, 403);
+    assert.equal((await send("status")).result.metadataIndexReady, false);
+    metadataIndexReady = true;
+    const ready = (await send("status")).result;
+    assert.equal(ready.metadataIndexReady, true);
+    assert.equal(ready.connected, false);
+    assert.equal(writes, 0);
     const ticket = bridge.ticket(
       "https://www.youtube.com/watch?v=a&type=TSNotes",
     );

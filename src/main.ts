@@ -173,7 +173,7 @@ export default class TSNotesBridgePlugin extends Plugin {
       if (r.action === "open")
         return this.records.open(String(r.payload.documentId || ""));
       throw Error("unsupported_operation");
-    });
+    }, () => initialized);
     await this.bridge.start();
     const playbackLog=join(homedir(),"Library","Application Support","TSNotes Bridge Peng",this.local.vaultId+".playback.json");
     let logTail:Promise<unknown>=Promise.resolve();
