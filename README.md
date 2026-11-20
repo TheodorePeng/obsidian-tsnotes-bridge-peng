@@ -1,6 +1,6 @@
 # TSNotes × Obsidian
 
-版本：浏览器扩展 0.8.14 / TSNotes Bridge Peng 0.1.16 / 桥接能力 1.2（HTTP 兼容 1.0，资源导入 resource-import-v1）。桌面 macOS；首轮验收环境 ego lite。
+版本：浏览器扩展 0.8.14 / TSNotes Bridge Peng 0.1.17 / 桥接能力 1.2（HTTP 兼容 1.0，资源导入 resource-import-v1）。桌面 macOS；首轮验收环境 ego lite。
 
 ## 安装和配对
 
@@ -171,3 +171,11 @@ TSNotes 根目录只保留 `Videos.base`、`Playlists.base` 和 `Library`。`Vid
 备份与日志保存在本机 Application Support 的 `TSNotes Bridge Peng/library-v4/<Vault UUID>/`，不随 Vault 同步。迁移不修改播放协议、Notion 保存、字幕采集、时间链接命令或专用窗口复用。
 
 详细说明见 [Library v4 与精简属性](docs/library-v4.md) 与 [验收记录](docs/library-v4-acceptance-20261023.md)。
+
+## 索引状态字段与连接提示（0.1.17）
+
+`status` 返回新增 `metadataIndexReady`，表示 TSNotes 记录索引是否已初始化；客户端可在发送写入前先探测，避免在索引未就绪时提交。旧版本 Bridge 可能省略该字段，此时写入仍会等待索引就绪，行为不变。探测 `status` 本身不产生任何写入。播放协议仍为 1.2，资源能力声明不变。
+
+浏览器断连的提示按实际在线实例区分：若还有其他 VideoPlay 实例在线，会提示到插件设置中核对已绑定实例；若完全没有连接，则提示到 TSNotes 配对页检查角色和连接。设置页「绑定目标浏览器实例」的说明改为实时显示已绑定实例在线或离线，不再使用固定文案。
+
+「重新连接 VideoPlay」的深链现在同时携带 `vault` 参数与 `reconnect=1`，多 Vault 场景下浏览器会回到发起重连的那个 Vault。协议字段说明见 [协议说明](docs/protocol-v1.md)。
