@@ -9,7 +9,8 @@ import { readFile, writeFile, rename } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { EditorView } from "@codemirror/view";
-import { linkFromElement, eventElement, captureMarkdown, snapshotInsertion, applyInsertion } from "./link-target";
+import { linkFromElement, eventElement, captureMarkdown } from "./link-target";
+import { prepareTimestampInsertion, settleEditorComposition } from "./timestamp-insertion";
 import { RecordService } from "./records";
 import { storageFor, ensureLibraryViews, assertLibraryLayout } from "./obsidian-storage";
 import { libraryPaths } from "./library";
@@ -323,7 +324,7 @@ export default class TSNotesBridgePlugin extends Plugin {
       new Notice("TSNotes: " + detail);
       return;
     }
-    const messages:Record<string,string>={browser_not_bound:"请先在插件设置中绑定目标浏览器实例",browser_disconnected:"目标浏览器的 VideoPlay 未连接，请打开 VideoPlay 后重试",browser_update_required:"请更新目标浏览器的 TSNotes 扩展",capture_busy:"正在获取时间链接，请稍候",capture_timeout:"获取时间链接超时，请重试",target_changed:"目标浏览器已改变，本次操作已取消",capture_session_changed:"播放会话已改变，请重试",capture_video_changed:"采样时视频发生切换，请重试",video_not_ready:"视频尚未就绪，请稍后重试",video_ad_playing:"正在播放广告，请等待视频恢复",unsupported_live_time:"当前直播无法生成可靠的回放时间链接",editor_changed:"笔记或光标已改变，本次未插入，请重试",frontmatter_insertion:"请将光标放在正文中，不能插入 Properties",multiple_cursors:"请保留一个光标或选区后重试",editor_unavailable:"请在可编辑的 Markdown 正文中执行插入命令",editor_readonly:"当前笔记只读，未插入链接",editor_composing:"请先完成输入法输入后重试",plugin_unloaded:"插件已卸载，本次操作已取消",invalid_capture_result:"收到的时间链接无效，未执行操作"};
+    const messages:Record<string,string>={browser_not_bound:"请先在插件设置中绑定目标浏览器实例",browser_disconnected:"目标浏览器的 VideoPlay 未连接，请打开 VideoPlay 后重试",browser_update_required:"请更新目标浏览器的 TSNotes 扩展",capture_busy:"正在获取时间链接，请稍候",capture_timeout:"获取时间链接超时，请重试",target_changed:"目标浏览器已改变，本次操作已取消",capture_session_changed:"播放会话已改变，请重试",capture_video_changed:"采样时视频发生切换，请重试",video_not_ready:"视频尚未就绪，请稍后重试",video_ad_playing:"正在播放广告，请等待视频恢复",unsupported_live_time:"当前直播无法生成可靠的回放时间链接",editor_changed:"笔记或光标已改变，本次未插入，请重试",frontmatter_insertion:"请将光标放在正文中，不能插入 Properties",multiple_cursors:"请保留一个光标或选区后重试",editor_unavailable:"请将光标放在可编辑的 Markdown 正文或 Canvas 文本卡片中",editor_readonly:"当前笔记只读，未插入链接",editor_composing:"请先完成输入法输入后重试",plugin_unloaded:"插件已卸载，本次操作已取消",invalid_capture_result:"收到的时间链接无效，未执行操作"};
     new Notice("TSNotes: "+(messages[error instanceof Error?error.message:""]||"获取时间链接失败，请检查连接后重试"));
   }
   invalidateTarget():void {
@@ -337,33 +338,34 @@ export default class TSNotesBridgePlugin extends Plugin {
   async bindBrowser(clientId:string):Promise<void> {
     this.invalidateTarget();await this.bridge.bindClient(clientId);
   }
-  private checkEditor(editor:Editor,ctx:MarkdownView|MarkdownFileInfo):void {
-    if(!ctx.file||ctx.file.extension!=="md"||typeof (ctx as MarkdownView).getMode==="function"&&(ctx as MarkdownView).getMode()!=="source")throw Error("editor_unavailable");
-    const cm=(editor as Editor&{cm?:{composing?:boolean;state?:{readOnly?:boolean}}}).cm;
-    if(cm?.state?.readOnly)throw Error("editor_readonly");
-    if(cm?.composing)throw Error("editor_composing");
-  }
   async captureTimeLink(mode:"copy"|"insert",editor?:Editor,ctx?:MarkdownView|MarkdownFileInfo):Promise<{success:true;markdown:string}> {
     if(this.captureBusy)throw Error("capture_busy");
     if(!this.active)throw Error("plugin_unloaded");
-    let snapshot:ReturnType<typeof snapshotInsertion>|undefined;
+    let insert: ((markdown: string) => void) | undefined;
     if(mode==="insert"){
       if(!editor||!ctx)throw Error("editor_unavailable");
-      this.checkEditor(editor,ctx);snapshot=snapshotInsertion(editor);
+      insert = prepareTimestampInsertion(this.app, editor, ctx);
     }
-    const epoch=this.targetEpoch,editorEpoch=this.editorEpoch,target=this.bridge.targetKey(),file=ctx?.file,path=file?.path;
+    const epoch=this.targetEpoch,editorEpoch=this.editorEpoch,target=this.bridge.targetKey();
+    const assertCurrent = () => {
+      if (!this.active) throw Error("plugin_unloaded");
+      if (epoch !== this.targetEpoch || target !== this.bridge.targetKey()) throw Error("target_changed");
+      if (insert && editorEpoch !== this.editorEpoch) throw Error("editor_changed");
+    };
     this.captureBusy=true;
     try{
+      const beforeCapture = insert && editor && settleEditorComposition(editor);
+      if (beforeCapture) await beforeCapture;
+      assertCurrent();
       const result=await this.bridge.capture() as {success?:boolean;reasonCode?:string;reason?:string};
-      if(!this.active)throw Error("plugin_unloaded");
-      if(epoch!==this.targetEpoch||target!==this.bridge.targetKey())throw Error("target_changed");
+      assertCurrent();
       if(!result?.success)throw Error(result?.reasonCode||result?.reason||"capture_failed");
+      const beforeInsertion = insert && editor && settleEditorComposition(editor);
+      if (beforeInsertion) await beforeInsertion;
+      assertCurrent();
       const markdown=captureMarkdown(result);
-      if(mode==="copy")await navigator.clipboard.writeText(markdown);
-      else{
-        if(editorEpoch!==this.editorEpoch||!editor||!ctx||!snapshot||ctx.file!==file||ctx.file?.path!==path||!path||this.app.vault.getAbstractFileByPath(path)!==file||this.app.workspace.activeEditor?.editor!==editor)throw Error("editor_changed");
-        this.checkEditor(editor,ctx);applyInsertion(editor,snapshot,markdown);
-      }
+      if (insert) insert(markdown);
+      else await navigator.clipboard.writeText(markdown);
       new Notice(`${mode==="copy"?"已复制":"已插入"} ${markdown.slice(1,markdown.indexOf("]"))}`);
       return {success:true,markdown};
     }finally{this.captureBusy=false;}

@@ -58,11 +58,11 @@ export function captureMarkdown(input: unknown): string {
 
 type InsertEditor=Pick<Editor,"getValue"|"getCursor"|"listSelections"|"posToOffset"|"transaction">;
 export interface InsertSnapshot { text:string; from:EditorPosition; to:EditorPosition; offset:number; selections:string }
-export function snapshotInsertion(editor:InsertEditor):InsertSnapshot {
+export function snapshotInsertion(editor:InsertEditor,protectFrontmatter=true):InsertSnapshot {
   if(editor.listSelections().length!==1)throw Error("multiple_cursors");
   const text=editor.getValue(),from={...editor.getCursor("from")},to={...editor.getCursor("to")};
   const lines=text.split("\n");
-  if(/^\uFEFF?---\r?$/.test(lines[0])){
+  if(protectFrontmatter&&/^\uFEFF?---\r?$/.test(lines[0])){
     const closing=lines.findIndex((line,i)=>i>0&&/^(---|\.\.\.)\r?$/.test(line));
     if(closing<0||from.line<=closing)throw Error("frontmatter_insertion");
   }
