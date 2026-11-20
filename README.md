@@ -1,6 +1,6 @@
 # TSNotes × Obsidian
 
-版本：浏览器扩展 0.8.14 / TSNotes Bridge Peng 0.1.17 / 桥接能力 1.2（HTTP 兼容 1.0，资源导入 resource-import-v1）。桌面 macOS；首轮验收环境 ego lite。
+版本：浏览器扩展 0.8.14 / TSNotes Bridge Peng 0.1.18 / 桥接能力 1.2（HTTP 兼容 1.0，资源导入 resource-import-v1）。桌面 macOS；首轮验收环境 ego lite。
 
 ## 安装和配对
 
@@ -179,3 +179,13 @@ TSNotes 根目录只保留 `Videos.base`、`Playlists.base` 和 `Library`。`Vid
 浏览器断连的提示按实际在线实例区分：若还有其他 VideoPlay 实例在线，会提示到插件设置中核对已绑定实例；若完全没有连接，则提示到 TSNotes 配对页检查角色和连接。设置页「绑定目标浏览器实例」的说明改为实时显示已绑定实例在线或离线，不再使用固定文案。
 
 「重新连接 VideoPlay」的深链现在同时携带 `vault` 参数与 `reconnect=1`，多 Vault 场景下浏览器会回到发起重连的那个 Vault。协议字段说明见 [协议说明](docs/protocol-v1.md)。
+
+## Canvas 文本卡片插入（0.1.18）
+
+「Insert current VideoPlay timestamp link」不再局限于 Markdown 正文：在 Canvas 中双击文本卡片进入编辑态，把光标放到目标位置后执行该命令，时间链接会插入到光标处。独立画布与内嵌（嵌入到笔记中的）画布都支持。
+
+插入前会核对目标仍然有效：卡片是否仍处于编辑态、光标是否仍在同一张卡片、画布节点是否未被替换、光标是否落在该卡片自己的编辑器内。等待时间链接期间如果切换了卡片、退出编辑或换了笔记，本次插入会被放弃并提示重试，不会写入错误的卡片。
+
+输入法仍在组合（composing）时，插件会先等待组合结束再取链接和插入，最长约 300 毫秒；超时仍提示「请先完成输入法输入后重试」，不会打断原生输入会话。
+
+Canvas 文本卡片没有 Properties，因此插入时不做 frontmatter 保护检查；Markdown 正文中「不能插入 Properties」的限制保持不变。播放协议与资源能力声明均无变化。
