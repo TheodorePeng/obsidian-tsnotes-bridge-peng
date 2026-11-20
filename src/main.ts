@@ -316,6 +316,13 @@ export default class TSNotesBridgePlugin extends Plugin {
     }
   }
   captureNotice(error: unknown): void {
+    if (error instanceof Error && error.message === "browser_disconnected") {
+      const detail = this.bridge?.clients().length
+        ? "有其他 VideoPlay 实例在线。请在插件设置中核对已绑定的浏览器实例"
+        : "未收到已绑定浏览器的 VideoPlay 连接。请在 TSNotes 配对页检查角色和连接，或点击重新连接";
+      new Notice("TSNotes: " + detail);
+      return;
+    }
     const messages:Record<string,string>={browser_not_bound:"请先在插件设置中绑定目标浏览器实例",browser_disconnected:"目标浏览器的 VideoPlay 未连接，请打开 VideoPlay 后重试",browser_update_required:"请更新目标浏览器的 TSNotes 扩展",capture_busy:"正在获取时间链接，请稍候",capture_timeout:"获取时间链接超时，请重试",target_changed:"目标浏览器已改变，本次操作已取消",capture_session_changed:"播放会话已改变，请重试",capture_video_changed:"采样时视频发生切换，请重试",video_not_ready:"视频尚未就绪，请稍后重试",video_ad_playing:"正在播放广告，请等待视频恢复",unsupported_live_time:"当前直播无法生成可靠的回放时间链接",editor_changed:"笔记或光标已改变，本次未插入，请重试",frontmatter_insertion:"请将光标放在正文中，不能插入 Properties",multiple_cursors:"请保留一个光标或选区后重试",editor_unavailable:"请在可编辑的 Markdown 正文中执行插入命令",editor_readonly:"当前笔记只读，未插入链接",editor_composing:"请先完成输入法输入后重试",plugin_unloaded:"插件已卸载，本次操作已取消",invalid_capture_result:"收到的时间链接无效，未执行操作"};
     new Notice("TSNotes: "+(messages[error instanceof Error?error.message:""]||"获取时间链接失败，请检查连接后重试"));
   }
@@ -380,7 +387,10 @@ export default class TSNotesBridgePlugin extends Plugin {
   }
   async reconnectPlayback():Promise<void>{
     if(!/^chrome-extension:\/\/[a-p]{32}$/.test(this.local.origin))throw Error("pairing_origin_missing");
-    await run("/usr/bin/open",["-b",this.local.browserBundle,this.local.origin+"/bridge.html?reconnect=1"],{timeout:10000});
+    const url = new URL(this.local.origin + "/bridge.html");
+    url.searchParams.set("reconnect", "1");
+    url.searchParams.set("vault", this.local.vaultId);
+    await run("/usr/bin/open", ["-b", this.local.browserBundle, url.href], { timeout: 10000 });
   }
   async play(url:string):Promise<void>{
     if(!this.isTsnotes(url))throw Error("unsupported_play_url");
@@ -448,8 +458,13 @@ class BridgeSettingTab extends PluginSettingTab {
       );
     const selectedId=this.plugin.local.browserBindings?.[this.plugin.local.browserBundle]||"";
     const clients=this.plugin.bridge.clients().filter(c=>c.capabilities.includes("capture-link"));
+    const boundStatus = selectedId && clients.some(client => client.clientId === selectedId)
+      ? "已绑定的 VideoPlay 实例在线，可获取时间戳。"
+      : selectedId
+        ? "已绑定的 VideoPlay 实例离线。请在该浏览器的 TSNotes 配对页检查连接。"
+        : "请打开 VideoPlay 并选择对应的在线浏览器实例。";
     let candidate=selectedId;
-    new Setting(containerEl).setName("绑定目标浏览器实例").setDesc("先在指定浏览器打开 VideoPlay，核对扩展配对页面的客户端标识，再明确保存绑定。此选择与浏览器的保存目标 Vault 无关。")
+    new Setting(containerEl).setName("绑定目标浏览器实例").setDesc(boundStatus)
       .addDropdown(d=>{d.addOption("","请选择在线实例");for(const client of clients)d.addOption(client.clientId,`${client.clientName} · ${client.clientId.slice(0,8)}`);if(selectedId&&!clients.some(c=>c.clientId===selectedId))d.addOption(selectedId,`已绑定 ${selectedId.slice(0,8)}（离线）`);d.setValue(selectedId).onChange(v=>{candidate=v;});})
       .addButton(b=>b.setButtonText("保存绑定").onClick(async()=>{try{await this.plugin.bindBrowser(candidate);new Notice("目标浏览器已绑定");this.display();}catch(e){this.plugin.captureNotice(e);}}))
       .addButton(b=>b.setButtonText("刷新在线实例").onClick(()=>this.display()));
